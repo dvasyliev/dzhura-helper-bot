@@ -4,7 +4,8 @@ import { config } from "../../config.ts";
 import { busyWith, startJob } from "../../jobs.ts";
 import type { Feature } from "../types.ts";
 import { notify, message, voiceBook } from "./deliver.ts";
-import { parseEpub, type Book } from "./epub.ts";
+import { placeSource, readPdf } from "./pdf.ts";
+import { parseEpub, type Book } from "../book/epub.ts";
 import {
   BOOKS_DIR,
   MAX_FOUND,
@@ -39,6 +40,8 @@ const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024; // Telegram Bot API getFile limit
 const BATCH = 5;
 const TYPE_RANGE = "Or type chapter numbers, for example 10-20.";
 const ONLY_LANGUAGES = "I voice only Ukrainian and English books.";
+const SCAN =
+  "This PDF looks like a scan; I can read only PDFs with a text layer for now.";
 
 /** The last book sent, waiting for the voice to be chosen. */
 let pending: Book | undefined;
@@ -53,32 +56,61 @@ const composer = new Composer<Context>();
 
 composer.on("message:document", async (ctx, next) => {
   const doc = ctx.message.document;
-  if (!doc.file_name?.toLowerCase().endsWith(".epub")) return next();
+  const name = doc.file_name ?? "";
+  const pdf = name.toLowerCase().endsWith(".pdf");
+  if (!pdf && !name.toLowerCase().endsWith(".epub")) return next();
   if ((doc.file_size ?? 0) > MAX_DOWNLOAD_BYTES)
     return ctx.reply(
       "The file is over 20 MB: Telegram doesn't let bots download it.",
     );
+  if (pdf && busyWith())
+    return ctx.reply(`Please wait, ${busyWith()} is in progress.`);
 
   try {
-    const file = await ctx.getFile();
-    const res = await fetch(
-      `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`,
-    );
-    if (!res.ok) throw new Error(`Couldn't download the file (${res.status})`);
-    const data = Buffer.from(await res.arrayBuffer());
-    const book = await parseEpub(data, doc.file_name);
+    const data = await download(ctx);
+    if (pdf) return await startPdf(ctx, data, name);
+    const book = await parseEpub(data, name);
     if (!book.chapters.length)
       return ctx.reply("Found no chapter with text in the book.");
     const language = languageOf(book);
     if (!language) return ctx.reply(ONLY_LANGUAGES);
     const dir = bookDir(bookName(book));
     await mkdir(dir, { recursive: true });
-    await writeFile(`${dir}/${safeFilename(doc.file_name)}`, data);
+    await writeFile(`${dir}/${safeFilename(name)}`, data);
+    await placeSource(dir, [safeFilename(name)]);
     await offer(ctx, book, language);
   } catch (error) {
     await ctx.reply(`Error: ${message(error)}`);
   }
 });
+
+async function download(ctx: Context): Promise<Buffer> {
+  const file = await ctx.getFile();
+  const res = await fetch(
+    `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`,
+  );
+  if (!res.ok) throw new Error(`Couldn't download the file (${res.status})`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/** Reads the PDF into book.md in the background (it takes a minute or two), then offers the voices. */
+async function startPdf(ctx: Context, data: Buffer, name: string) {
+  const chatId = ctx.chat!.id;
+  const read = async () => {
+    const book = await readPdf(data, name);
+    if (book === "scan") return notify(ctx.api, chatId, SCAN);
+    if (!book.chapters.length)
+      return notify(ctx.api, chatId, "Found no chapter with text in the book.");
+    const language = languageOf(book);
+    if (!language) return notify(ctx.api, chatId, ONLY_LANGUAGES);
+    await offer(ctx, book, language);
+  };
+  const stopped = (error: unknown) =>
+    notify(ctx.api, chatId, `Reading the PDF stopped: ${message(error)}`);
+  if (!startJob(`reading «${name}»`, read, stopped))
+    return ctx.reply(`Please wait, ${busyWith()} is in progress.`);
+  await ctx.reply("Reading the PDF, this takes a minute or two.");
+}
 
 // Voice chosen: a short rest is voiced at once, otherwise the owner picks how much.
 composer.callbackQuery(/^voice:(.+)$/, async (ctx) => {
@@ -176,7 +208,7 @@ composer.on("message:text", async (ctx, next) => {
     folders.filter((f) => f.isDirectory()).map((f) => f.name),
   ).slice(0, MAX_FOUND);
   if (!found.length)
-    return ctx.reply("No such book yet. Send the EPUB to voice it.");
+    return ctx.reply("No such book yet. Send the EPUB or PDF to voice it.");
   const keyboard = new InlineKeyboard();
   if (found.length === 1) {
     keyboard.text("Yes", "book:0").text("No", "book:no");
@@ -196,13 +228,13 @@ composer.callbackQuery(/^book:(.+)$/, async (ctx) => {
   const folder = found[Number(ctx.match[1])];
   if (!folder)
     return ctx.reply(
-      "OK. Write the title or author differently, or send the EPUB.",
+      "OK. Write the title or author differently, or send the EPUB or PDF.",
     );
   try {
     const book = await loadBook(folder);
     if (!book)
       return ctx.reply(
-        `The folder «${folder}» has no EPUB. Send the book again.`,
+        `The folder «${folder}» has no EPUB or book.md. Send the book again.`,
       );
     const language = languageOf(book);
     if (!language) return ctx.reply(ONLY_LANGUAGES);
@@ -302,7 +334,7 @@ function remaining(book: Book, voice: Voice): Chapter[] {
 /** The menu button: what to send, and the most recently touched books that are not voiced to the end. */
 async function openMenu(ctx: Context) {
   const text =
-    "Send an EPUB book in Ukrainian or English and I'll voice it chapter by chapter. Or type the title or author of a book you sent before.";
+    "Send an EPUB or PDF book in Ukrainian or English and I'll voice it chapter by chapter. Or type the title or author of a book you sent before.";
   const books = await unfinished();
   found = books.map((b) => b.folder);
   if (!books.length) return ctx.reply(text);
@@ -315,7 +347,8 @@ async function openMenu(ctx: Context) {
 }
 
 function languageOf(book: Book): Language | undefined {
-  return bookLanguage(book.chapters.map((c) => c.text).join("\n"));
+  const language = bookLanguage(book.chapters.map((c) => c.text).join("\n"));
+  return language === "ru" ? undefined : language;
 }
 
 /** What is already voiced, the forecast and the buttons with the voices of the book's language. */

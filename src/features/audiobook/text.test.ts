@@ -61,8 +61,13 @@ describe("bookLanguage", () => {
     ).toBe("en");
   });
 
+  it("detects Russian", () => {
+    expect(
+      bookLanguage("Это было давно, ещё до войны. Мы шли объёмным шагом."),
+    ).toBe("ru");
+  });
+
   it("refuses other languages", () => {
-    expect(bookLanguage("Он открыл дверь и увидел её.")).toBeUndefined();
     expect(
       bookLanguage("Il ouvrit la porte et vit qu'elle était dans la chambre."),
     ).toBeUndefined();

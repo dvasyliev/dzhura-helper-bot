@@ -4,7 +4,7 @@
 import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { parseEpub } from "./epub.ts";
+import { parseEpub } from "../book/epub.ts";
 import { bookLanguage } from "./text.ts";
 import { voiceChapters, voicesFor } from "./voice.ts";
 
@@ -27,7 +27,8 @@ const text = chapter.text.split(/\s+/).slice(0, Number(wordsArg)).join(" ");
 console.log(`${book.title} / ${chapter.title}\n\n${text}\n`);
 
 const language = bookLanguage(text);
-if (!language) throw new Error("The book is neither Ukrainian nor English");
+if (!language || language === "ru")
+  throw new Error("The book is neither Ukrainian nor English");
 const audioDir = path.join("data/voice-samples", language);
 const textDir = await mkdtemp(path.join(tmpdir(), "sample-")); // fresh, so the text is prepared anew
 for (const voice of voicesFor(language)) {

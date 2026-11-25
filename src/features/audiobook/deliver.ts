@@ -1,6 +1,6 @@
 import { InputFile, type Api } from "grammy";
 import path from "node:path";
-import type { Book } from "./epub.ts";
+import type { Book } from "../book/epub.ts";
 import type { Chapter } from "./library.ts";
 import { bookName, bookPaths } from "./text.ts";
 import { voiceChapters, type Voice } from "./voice.ts";

@@ -8,6 +8,8 @@ dependencies = [
     "audio-separator[cpu]>=0.48",
     "audioread>=3.1.0",
     "ctc-forced-aligner",
+    "docling>=2.153.0",
+    "docling-core>=2.108.0",
     "en-core-web-sm",
     "holos-tts-mlx>=0.1",
     "ipa-uk",
@@ -19,6 +21,7 @@ dependencies = [
     "num2words>=0.5.14",
     "numpy>=2.4.6",
     "pillow>=13.0.0",
+    "pypdfium2>=5.15.2",
     "requests>=2.34.2",
     "torch>=2.15.0",
     "yt-dlp>=2026.11.23",
@@ -43,7 +46,7 @@ dev = [
 [tool.deptry]
 # Scripts in src/features/*/scripts import their neighbours and subpackages (uk, tts) by bare name.
 known_first_party = [
-    "sentences", "tts", "uk", "voice",
+    "sentences", "tts", "uk", "voice", "pdf_book", "pdf_convert",
     "align", "countin", "fetch", "karaoke", "listen", "lyrics", "render", "separate", "subtitles", "verify",
 ]
 # audioread: audio-separator needs it but does not declare it. misaki[en] and en-core-web-sm: mlx-audio's Kokoro

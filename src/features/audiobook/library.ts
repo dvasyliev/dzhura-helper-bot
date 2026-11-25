@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { parseEpub, type Book } from "./epub.ts";
+import { parseEpub, type Book } from "../book/epub.ts";
+import { BOOK_MD, parseMarkdown } from "../book/markdown.ts";
 import { bookName, bookPaths, chapterName } from "./text.ts";
 import { VOICES, isVoiced, type Voice, type VoiceJob } from "./voice.ts";
 
@@ -59,9 +60,14 @@ async function lastChange(folder: string): Promise<number> {
 
 export async function loadBook(folder: string): Promise<Book | undefined> {
   const dir = path.join(BOOKS_DIR, folder);
-  const epub = (await readdir(dir)).find((f) =>
-    f.toLowerCase().endsWith(".epub"),
-  );
+  const files = await readdir(dir);
+  // A PDF is read once into book.md; reading the PDF again would take a minute.
+  if (files.includes(BOOK_MD))
+    return parseMarkdown(
+      await readFile(path.join(dir, BOOK_MD), "utf8"),
+      folder,
+    );
+  const epub = files.find((f) => f.toLowerCase().endsWith(".epub"));
   return epub
     ? parseEpub(await readFile(path.join(dir, epub)), epub)
     : undefined;

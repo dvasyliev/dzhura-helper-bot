@@ -17,7 +17,7 @@ export function bookName(book: { title: string; author?: string }): string {
   return book.author ? `${book.author} - ${book.title}` : book.title;
 }
 
-/** A book's folder: its EPUB, prepared texts (text/), audio per voice (audio/<voice>/) and stress dictionary. */
+/** A book's folder: its EPUB (or PDF and book.md), prepared texts (text/), audio per voice (audio/<voice>/) and stress dictionary. */
 export function bookDir(name: string): string {
   return `data/audiobook/${safeFilename(name)}`;
 }
@@ -43,6 +43,8 @@ export function findBooks(query: string, names: string[]): string[] {
 
 /** The book languages the bot voices. */
 export type Language = "uk" | "en";
+/** What `bookLanguage` can tell: the voiced languages and Russian, which the bot only translates. */
+export type BookLanguage = Language | "ru";
 export type Provider = "holos" | "kokoro";
 
 /** Frequent English words; in English prose they make about a third of all words. */
@@ -53,14 +55,18 @@ const ENGLISH_WORDS = new Set(
 );
 const MIN_ENGLISH_SHARE = 0.15;
 
-/** «uk»: Cyrillic with more і/ї/є/ґ than ы/э/ъ/ё (Russian). «en»: Latin with many frequent English words
+/** «uk»: Cyrillic with more і/ї/є/ґ than ы/э/ъ/ё. «ru»: Cyrillic with more ы/э/ъ/ё than і/ї/є/ґ. «en»: Latin with many frequent English words
  * (French and German have few of them). Any other text: undefined. */
-export function bookLanguage(text: string): Language | undefined {
+export function bookLanguage(text: string): BookLanguage | undefined {
   const count = (letters: RegExp) => text.match(letters)?.length ?? 0;
   const cyrillic = count(/[а-яіїєґё]/gi);
   const latin = count(/[a-z]/gi);
-  if (cyrillic > latin)
-    return count(/[іїєґ]/gi) > count(/[ыэъё]/gi) ? "uk" : undefined;
+  if (cyrillic > latin) {
+    const ukrainian = count(/[іїєґ]/gi);
+    const russian = count(/[ыэъё]/gi);
+    if (ukrainian === russian) return undefined;
+    return ukrainian > russian ? "uk" : "ru";
+  }
   const words = text.toLowerCase().match(/[a-z']+/g) ?? [];
   const english = words.filter((w) => ENGLISH_WORDS.has(w)).length;
   return words.length && english / words.length >= MIN_ENGLISH_SHARE
