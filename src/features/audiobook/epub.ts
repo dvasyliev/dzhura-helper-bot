@@ -85,6 +85,7 @@ function htmlToText(html: string): string {
   const body = html.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? html;
   return parse(body.replace(BLOCK_END, (m) => `${m}\n`))
     .text.replace(/\u00a0/g, " ")
+    .replace(/\[\d+\]/g, "") // footnote markers
     .split("\n")
     .map((line) => line.replace(/[ \t]+/g, " ").trim())
     .filter(Boolean)

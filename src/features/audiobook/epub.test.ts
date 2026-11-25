@@ -96,6 +96,15 @@ describe("parseEpub", () => {
     expect(text.startsWith("Том і&Джері\n")).toBe(true);
     expect(text).not.toContain("<");
   });
+
+  it("drops footnote markers like [1]", async () => {
+    const book = await parseEpub(
+      await buildEpub({
+        items: [{ id: "a", href: "a.xhtml", body: `<p>Протока<a href="#n1">[1]</a> і миля[23].</p><p>${LONG}</p>` }],
+      }),
+    );
+    expect(book.chapters[0].text.startsWith("Протока і миля.\n")).toBe(true);
+  });
 });
 
 describe("parseEpub skips pages that are not chapters", () => {

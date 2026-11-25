@@ -1,0 +1,12 @@
+{
+  "holos": {
+    "male": ["Speaker_0", "Speaker_29", "Speaker_34", "Speaker_36", "Speaker_56"],
+    "female": ["Speaker_17", "Speaker_26", "Speaker_30", "Speaker_43"],
+    "default": { "female": "Speaker_17", "male": "Speaker_36" }
+  },
+  "fish": {
+    "male": ["e8f78487bf5a44b6a9bf2a0369e603aa"],
+    "female": ["9083994d010e4dceab9cfd32e10b3ec8"],
+    "default": { "female": "9083994d010e4dceab9cfd32e10b3ec8", "male": "e8f78487bf5a44b6a9bf2a0369e603aa" }
+  }
+}

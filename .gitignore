@@ -1,3 +1,6 @@
 node_modules
 .env
 .superpowers
+data/
+.venv
+__pycache__/

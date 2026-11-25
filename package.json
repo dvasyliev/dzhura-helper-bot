@@ -9,7 +9,8 @@
   "scripts": {
     "test": "vitest run",
     "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sample": "tsx src/features/audiobook/sample.ts"
   },
   "keywords": [],
   "author": "",
