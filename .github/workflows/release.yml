@@ -1,0 +1,32 @@
+# Publishes a GitHub Release for each version tag the pre-push hook pushes, with that version's
+# section of CHANGELOG.md as the notes. Run it by hand to publish an existing tag.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - name: Notes from the changelog
+        run: |
+          version="${TAG#v}"
+          awk -v v="$version" '$0 ~ "^## " v " " {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "no CHANGELOG.md section for $version"; exit 1; }
+      - run: gh release create "$TAG" --title "$TAG" --notes-file notes.md --verify-tag

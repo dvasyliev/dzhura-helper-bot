@@ -1,0 +1,41 @@
+name: Bug report
+description: Something the bot does wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Paste any error output from the bot's console.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Send the bot a YouTube link
+        2. Pick Karaoke
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: feature
+    attributes:
+      label: Feature
+      options: [Audiobook, Karaoke, Other]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Bot version
+      description: The version in package.json, or the release you run.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac and macOS
+      description: The chip and the macOS version, e.g. M2, macOS 26.1.

@@ -1,0 +1,40 @@
+# Runs on GitHub what the end-of-turn hook runs locally: every check in .claude/harness.json
+# (npm run check), and commitlint on the commit messages of a pull request. The Python side needs
+# Apple Silicon (MLX), so the checks run on a macOS arm64 runner.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: npm ci
+      - run: uv sync --frozen
+      - run: npm run check
+
+  commitlint:
+    # Dependabot's commit bodies hold release notes with long lines that commitlint rejects.
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose

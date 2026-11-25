@@ -1,0 +1,9 @@
+# Changelog
+
+## 0.1.0 (2026-11-25)
+
+### Features
+
+- Audiobook: voices EPUB and text PDF books (HolosTTS for Ukrainian, Kokoro-82M for English) and sends an mp3 per chapter
+- Karaoke: makes a karaoke video from a YouTube link, with the words lighting up as they are sung, and sends it to Telegram or to a YouTube playlist
+- Book: writes a book (EPUB or PDF) to book.md once, so later loads read it from there, and detects ru books

@@ -99,7 +99,7 @@ I teach developers what I use in production: practical, project-based courses on
 
 ## Contributing
 
-Have a question, found a bug or have an idea? [Open an issue](https://github.com/dvasyliev/dzhura-helper-bot/issues). Pull requests are welcome. Commit rules and how the code is laid out: [CLAUDE.md](CLAUDE.md).
+Have a question, found a bug or have an idea? [Open an issue](https://github.com/dvasyliev/dzhura-helper-bot/issues). Pull requests are welcome. Commit rules and how the code is laid out: [CLAUDE.md](CLAUDE.md). What changed in each version: [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/dvasyliev/dzhura-helper-bot/releases). Security issues: [SECURITY.md](SECURITY.md).
 
 ## License
 

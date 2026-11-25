@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# Before a push: release the commits since the last tag (scripts/release.mjs).
+# A release adds a commit and a tag that this push no longer carries, so it stops the push:
+# push again and both go (push.followTags, turned on here).
+git config push.followTags true
+released=$(node scripts/release.mjs) || exit 1
+[ -z "$released" ] && exit 0
+echo "released $released" >&2
+echo "pre-push: released a new version; push again to send it." >&2
+exit 1
