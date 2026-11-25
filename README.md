@@ -1,4 +1,4 @@
-# Audiobook bot
+# Dzhura
 
 Особистий Telegram-бот-помічник з кількома функціями (аудіокнига, переклад, караоке, summary з YouTube). Відповідає тільки власнику. Потрібен Mac з Apple Silicon.
 

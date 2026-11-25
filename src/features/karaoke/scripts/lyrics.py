@@ -84,7 +84,7 @@ def search(artist: str, title: str) -> list[dict]:
         res = requests.get(
             LRCLIB,
             params={"track_name": title, "artist_name": artist},
-            headers={"User-Agent": "audiobook-bot karaoke (personal)"},
+            headers={"User-Agent": "dzhura-helper-bot karaoke (personal)"},
             timeout=10,
         )
         res.raise_for_status()

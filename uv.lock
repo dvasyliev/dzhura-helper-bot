@@ -111,43 +111,6 @@ cpu = [
 ]
 
 [[package]]
-name = "audiobook-bot"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "accentuk" },
-    { name = "audio-separator", extra = ["cpu"] },
-    { name = "audioread" },
-    { name = "ctc-forced-aligner" },
-    { name = "holos-tts-mlx" },
-    { name = "ipa-uk" },
-    { name = "lameenc" },
-    { name = "mlx-whisper" },
-    { name = "num2words" },
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "requests" },
-    { name = "yt-dlp" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "accentuk", specifier = "==0.3.3" },
-    { name = "audio-separator", extras = ["cpu"], specifier = ">=0.48" },
-    { name = "audioread", specifier = ">=3.1.0" },
-    { name = "ctc-forced-aligner", git = "https://github.com/MahmoudAshraf97/ctc-forced-aligner.git?rev=277720ff832f6ec92bc97e32c7a6eda5dc466277" },
-    { name = "holos-tts-mlx", specifier = ">=0.1" },
-    { name = "ipa-uk", git = "https://github.com/patriotyk/ipa-uk.git" },
-    { name = "lameenc", specifier = ">=1.9.0" },
-    { name = "mlx-whisper", specifier = ">=0.4.3" },
-    { name = "num2words", specifier = ">=0.5.14" },
-    { name = "numpy", specifier = ">=2.4.6" },
-    { name = "pillow", specifier = ">=13.0.0" },
-    { name = "requests", specifier = ">=2.34.2" },
-    { name = "yt-dlp", specifier = ">=2026.11.23" },
-]
-
-[[package]]
 name = "audioop-lts"
 version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -794,6 +757,43 @@ name = "docopt"
 version = "0.6.2"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/55/8f8cab2afd404cf578136ef2cc5dfb50baa1761b68c9da1fb1e4eed343c9/docopt-0.6.2.tar.gz", hash = "sha256:49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491", size = 25901, upload-time = "2014-06-16T11:18:57.406Z" }
+
+[[package]]
+name = "dzhura-helper-bot"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "accentuk" },
+    { name = "audio-separator", extra = ["cpu"] },
+    { name = "audioread" },
+    { name = "ctc-forced-aligner" },
+    { name = "holos-tts-mlx" },
+    { name = "ipa-uk" },
+    { name = "lameenc" },
+    { name = "mlx-whisper" },
+    { name = "num2words" },
+    { name = "numpy" },
+    { name = "pillow" },
+    { name = "requests" },
+    { name = "yt-dlp" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "accentuk", specifier = "==0.3.3" },
+    { name = "audio-separator", extras = ["cpu"], specifier = ">=0.48" },
+    { name = "audioread", specifier = ">=3.1.0" },
+    { name = "ctc-forced-aligner", git = "https://github.com/MahmoudAshraf97/ctc-forced-aligner.git?rev=277720ff832f6ec92bc97e32c7a6eda5dc466277" },
+    { name = "holos-tts-mlx", specifier = ">=0.1" },
+    { name = "ipa-uk", git = "https://github.com/patriotyk/ipa-uk.git" },
+    { name = "lameenc", specifier = ">=1.9.0" },
+    { name = "mlx-whisper", specifier = ">=0.4.3" },
+    { name = "num2words", specifier = ">=0.5.14" },
+    { name = "numpy", specifier = ">=2.4.6" },
+    { name = "pillow", specifier = ">=13.0.0" },
+    { name = "requests", specifier = ">=2.34.2" },
+    { name = "yt-dlp", specifier = ">=2026.11.23" },
+]
 
 [[package]]
 name = "einops"
