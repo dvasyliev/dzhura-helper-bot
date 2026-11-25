@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# After switching branches: install the packages when the lockfile differs.
+# Git passes the old and new commit, and 1 for a branch checkout (0 for a file checkout).
+[ "$3" = 1 ] || exit 0
+if [ -f pnpm-lock.yaml ]; then pm=pnpm lock=pnpm-lock.yaml; else pm=npm lock=package-lock.json; fi
+git diff --quiet "$1" "$2" -- "$lock" || "$pm" install || echo "post-checkout: $pm install failed; run it by hand" >&2
+git diff --quiet "$1" "$2" -- uv.lock || uv sync || echo "post-checkout: uv sync failed; run it by hand" >&2

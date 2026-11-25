@@ -1,0 +1,5 @@
+{
+  "*": "secretlint",
+  "*.{ts,tsx,mts,js,jsx,mjs}": ["sh .githooks/run-script.sh format:file", "sh .githooks/run-script.sh lint:file"],
+  "*.{css,json,md}": "sh .githooks/run-script.sh format:file"
+}

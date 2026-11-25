@@ -9,10 +9,15 @@ import { parseEpub } from "./epub.ts";
 import { VOICES, voiceChapters } from "./voice.ts";
 
 const [folder, wordsArg = "150"] = process.argv.slice(2);
-if (!folder) throw new Error('Usage: npm run sample -- "<folder in data/audiobook>" [words]');
+if (!folder)
+  throw new Error(
+    'Usage: npm run sample -- "<folder in data/audiobook>" [words]',
+  );
 
 const dir = path.join("data/audiobook", folder);
-const epub = (await readdir(dir)).find((f) => f.toLowerCase().endsWith(".epub"));
+const epub = (await readdir(dir)).find((f) =>
+  f.toLowerCase().endsWith(".epub"),
+);
 if (!epub) throw new Error(`No .epub in ${dir}`);
 const book = await parseEpub(await readFile(path.join(dir, epub)), epub);
 const chapter = book.chapters[0];
@@ -26,7 +31,13 @@ const textDir = await mkdtemp(path.join(tmpdir(), "sample-")); // fresh, so the 
 for (const voice of VOICES) {
   const chapters = [{ index: 0, name: voice.name, text }];
   const dictionary = path.join(dir, "словник наголосів.txt");
-  for await (const event of voiceChapters({ voiceId: voice.id, textDir, audioDir, dictionary, chapters })) {
+  for await (const event of voiceChapters({
+    voiceId: voice.id,
+    textDir,
+    audioDir,
+    dictionary,
+    chapters,
+  })) {
     if ("report" in event) continue;
     if (event.error) throw new Error(event.error);
     console.log(`Saved ${event.files!.join(", ")}`);

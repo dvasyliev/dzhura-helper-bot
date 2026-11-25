@@ -9,7 +9,10 @@ describe("isSeparated", () => {
     const data = mkdtempSync(path.join(tmpdir(), "karaoke-"));
     const song = path.join(data, "Coldplay - Yellow");
     mkdirSync(path.join(song, "stems"), { recursive: true });
-    writeFileSync(path.join(song, "meta.json"), JSON.stringify({ id: "yKNxeF4KMsY" }));
+    writeFileSync(
+      path.join(song, "meta.json"),
+      JSON.stringify({ id: "yKNxeF4KMsY" }),
+    );
     expect(isSeparated("yKNxeF4KMsY", data)).toBe(false);
     writeFileSync(path.join(song, "stems", "vocals.wav"), "");
     expect(isSeparated("yKNxeF4KMsY", data)).toBe(true);

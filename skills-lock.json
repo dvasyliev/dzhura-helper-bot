@@ -1,0 +1,68 @@
+{
+  "version": 2,
+  "skills": {
+    "javascript-testing-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/javascript-typescript/skills/javascript-testing-patterns/SKILL.md",
+      "computedHash": "df9a91c014dd91ee65d7008cd23929cbe4b9e2087d67cdb31ebd0ab3831134af",
+      "installMode": "copy"
+    },
+    "modern-javascript-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/javascript-typescript/skills/modern-javascript-patterns/SKILL.md",
+      "computedHash": "9b0a9226c7006b041f30969d055e1ed9ef8267cc1cf59819552503ff477cae36",
+      "installMode": "copy"
+    },
+    "nodejs-backend-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/javascript-typescript/skills/nodejs-backend-patterns/SKILL.md",
+      "computedHash": "e478380e9c9d245d0c4caf6574d00934aca71fc62101e571262cdd26f958f4f1",
+      "installMode": "copy"
+    },
+    "python-anti-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-anti-patterns/SKILL.md",
+      "computedHash": "9a98a1ddf7517582a43d9d27e3c84c3e3763791bb1f38926f1fe9bf49ad8e33a",
+      "installMode": "copy"
+    },
+    "python-code-style": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-code-style/SKILL.md",
+      "computedHash": "ac7538b1ccb0e4b1cbcccfe883ff3d5e004e138af1b6830359a81a0400abc71c",
+      "installMode": "copy"
+    },
+    "python-error-handling": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-error-handling/SKILL.md",
+      "computedHash": "1f1da6dd6e89c36d28660728512bcb93b17d4f210ddfa727e1b519147fea20b9",
+      "installMode": "copy"
+    },
+    "python-project-structure": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-project-structure/SKILL.md",
+      "computedHash": "b7d35eb6783ddf2a99c130dc570e47341fd78749024382a6f74d146024404918",
+      "installMode": "copy"
+    },
+    "python-resilience": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-resilience/SKILL.md",
+      "computedHash": "ca23b9a771929ad20e2ff59df7d39b5439789efc09ac70ef20db5de79c1d57f2",
+      "installMode": "copy"
+    },
+    "python-testing-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-testing-patterns/SKILL.md",
+      "computedHash": "8113c05a831d4872c9294b0df26a335c09af423ee2e23d8b9b6817b300d96796",
+      "installMode": "copy"
+    }
+  }
+}

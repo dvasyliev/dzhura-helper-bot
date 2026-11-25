@@ -15,7 +15,9 @@ MAX_NAME_CHARS = 100  # like the books: readable names within file system limits
 def song_name(meta: dict) -> str:
     """«Coldplay - Yellow», or the video title when the artist or track is unknown; safe as a file name."""
     name = f"{meta['artist']} - {meta['track']}" if meta["artist"] and meta["track"] else meta["title"]
-    return re.sub(r'[/\\:*?"<>|]', "_", name).strip(". ")[:MAX_NAME_CHARS].strip()  # a leading «.» would hide the folder
+    return (
+        re.sub(r'[/\\:*?"<>|]', "_", name).strip(". ")[:MAX_NAME_CHARS].strip()
+    )  # a leading «.» would hide the folder
 
 
 # Video labels, like the bot's buttons, in the song's language: (music only, with vocals).
@@ -54,16 +56,17 @@ def fetch(url: str, data_dir: str, video_id: str) -> tuple[str, dict]:
     # A known song missing its clip is downloaded again in place; a new one goes to a hidden folder until its name is known.
     tmp = work_dir or os.path.join(data_dir, f".{video_id}")
     os.makedirs(tmp, exist_ok=True)
-    opts = {
-        "format": "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/b",
-        "outtmpl": os.path.join(tmp, "clip.%(ext)s"),
-        "merge_output_format": "mp4",
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-        "noprogress": True,
-    }
-    with yt_dlp.YoutubeDL(opts) as ydl:
+    with yt_dlp.YoutubeDL(
+        {
+            "format": "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/b",
+            "outtmpl": os.path.join(tmp, "clip.%(ext)s"),
+            "merge_output_format": "mp4",
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "noprogress": True,
+        }
+    ) as ydl:
         info = ydl.extract_info(url, download=True)
     artist, track = info.get("artist") or info.get("creator"), info.get("track")
     if not (artist and track):

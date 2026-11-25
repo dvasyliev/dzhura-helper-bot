@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# Check the commit message with commitlint. Git passes the path to the message as $1.
+# Use the commitlint we installed; a project without node_modules (python) runs it through npx.
+if [ -d node_modules ]; then
+  if [ -f pnpm-lock.yaml ]; then pnpm exec commitlint --edit "$1"; else npx --no-install commitlint --edit "$1"; fi
+else
+  npx -y -p @commitlint/cli@21.2.4 -p @commitlint/config-conventional@21.2.4 commitlint --edit "$1"
+fi

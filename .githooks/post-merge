@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# After a pull or merge: install the packages when the lockfile changed.
+if [ -f pnpm-lock.yaml ]; then pm=pnpm lock=pnpm-lock.yaml; else pm=npm lock=package-lock.json; fi
+git diff --quiet ORIG_HEAD HEAD -- "$lock" || "$pm" install || echo "post-merge: $pm install failed; run it by hand" >&2
+git diff --quiet ORIG_HEAD HEAD -- uv.lock || uv sync || echo "post-merge: uv sync failed; run it by hand" >&2

@@ -4,7 +4,8 @@ dotenv.config({ quiet: true });
 
 function required(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`Missing environment variable ${name} (see .env.example)`);
+  if (!value)
+    throw new Error(`Missing environment variable ${name} (see .env.example)`);
   return value;
 }
 

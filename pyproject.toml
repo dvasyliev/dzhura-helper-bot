@@ -11,14 +11,36 @@ dependencies = [
     "holos-tts-mlx>=0.1",
     "ipa-uk",
     "lameenc>=1.9.0",
+    "librosa>=1.0.1",
     "mlx-whisper>=0.4.3",
     "num2words>=0.5.14",
     "numpy>=2.4.6",
     "pillow>=13.0.0",
     "requests>=2.34.2",
+    "torch>=2.15.0",
     "yt-dlp>=2026.11.23",
 ]
 
 [tool.uv.sources]
 ipa-uk = { git = "https://github.com/patriotyk/ipa-uk.git" }
 ctc-forced-aligner = { git = "https://github.com/MahmoudAshraf97/ctc-forced-aligner.git", rev = "277720ff832f6ec92bc97e32c7a6eda5dc466277" }
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.40.2",
+    "deptry>=0.25.1",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "responses>=0.26.3",
+    "ruff>=0.17.6",
+    "vulture>=2.16",
+]
+
+[tool.deptry]
+# Scripts in src/features/*/scripts import their neighbours by bare name.
+known_first_party = [
+    "abbreviations", "fish", "holos", "numbers_uk", "prepare", "sentences", "stress_index", "voice",
+    "align", "countin", "fetch", "karaoke", "listen", "lyrics", "render", "separate", "subtitles",
+]
+# audioread: audio-separator needs it but does not declare it. pytest: imported only by the tests.
+per_rule_ignores = { DEP002 = ["audioread"], DEP004 = ["pytest"] }

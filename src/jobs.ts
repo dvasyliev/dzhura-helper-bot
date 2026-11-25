@@ -10,7 +10,11 @@ export function busyWith(): string | undefined {
 }
 
 /** Starts `job` unless another one is running; returns false if busy. */
-export function startJob(name: string, job: () => Promise<void>, onError: (error: unknown) => Promise<void>): boolean {
+export function startJob(
+  name: string,
+  job: () => Promise<void>,
+  onError: (error: unknown) => Promise<void>,
+): boolean {
   if (current) return false;
   current = name;
   void job()

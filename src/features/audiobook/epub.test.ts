@@ -17,23 +17,39 @@ async function buildEpub(opts: {
     "META-INF/container.xml",
     `<?xml version="1.0"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>`,
   );
-  const manifest = opts.items.map((i) => `<item id="${i.id}" href="${i.href}" media-type="application/xhtml+xml"/>`);
-  if (opts.nav) manifest.push(`<item id="nav" href="nav.xhtml" properties="nav" media-type="application/xhtml+xml"/>`);
-  if (opts.ncx) manifest.push(`<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>`);
+  const manifest = opts.items.map(
+    (i) =>
+      `<item id="${i.id}" href="${i.href}" media-type="application/xhtml+xml"/>`,
+  );
+  if (opts.nav)
+    manifest.push(
+      `<item id="nav" href="nav.xhtml" properties="nav" media-type="application/xhtml+xml"/>`,
+    );
+  if (opts.ncx)
+    manifest.push(
+      `<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>`,
+    );
   zip.file(
     "OEBPS/content.opf",
     `<?xml version="1.0"?><package><metadata>${opts.metadata ?? "<dc:title>Моя книжка</dc:title>"}</metadata>
      <manifest>${manifest.join("")}</manifest>
      <spine>${opts.items.map((i) => `<itemref idref="${i.id}"/>`).join("")}</spine></package>`,
   );
-  for (const i of opts.items) zip.file(`OEBPS/${i.href}`, `<html><body>${i.body}</body></html>`);
+  for (const i of opts.items)
+    zip.file(`OEBPS/${i.href}`, `<html><body>${i.body}</body></html>`);
   if (opts.nav) {
-    const links = Object.entries(opts.nav).map(([href, t]) => `<li><a href="${href}">${t}</a></li>`);
-    zip.file("OEBPS/nav.xhtml", `<html><body><nav epub:type="toc"><ol>${links.join("")}</ol></nav></body></html>`);
+    const links = Object.entries(opts.nav).map(
+      ([href, t]) => `<li><a href="${href}">${t}</a></li>`,
+    );
+    zip.file(
+      "OEBPS/nav.xhtml",
+      `<html><body><nav epub:type="toc"><ol>${links.join("")}</ol></nav></body></html>`,
+    );
   }
   if (opts.ncx) {
     const points = Object.entries(opts.ncx).map(
-      ([href, t]) => `<navPoint><navLabel><text>${t}</text></navLabel><content src="${href}"/></navPoint>`,
+      ([href, t]) =>
+        `<navPoint><navLabel><text>${t}</text></navLabel><content src="${href}"/></navPoint>`,
     );
     zip.file("OEBPS/toc.ncx", `<ncx><navMap>${points.join("")}</navMap></ncx>`);
   }
@@ -49,19 +65,40 @@ describe("parseEpub", () => {
           { id: "b", href: "text/b.xhtml", body: `<p>${LONG}</p>` },
           { id: "c", href: "c.xhtml", body: `<p>${LONG}</p>` },
         ],
-        nav: { "a.xhtml": "Перший", "text/b.xhtml#start": "Другий", "c.xhtml": "Третій" },
+        nav: {
+          "a.xhtml": "Перший",
+          "text/b.xhtml#start": "Другий",
+          "c.xhtml": "Третій",
+        },
       }),
     );
     expect(book.title).toBe("Моя книжка");
-    expect(book.chapters.map((c) => c.title)).toEqual(["Перший", "Другий", "Третій"]);
+    expect(book.chapters.map((c) => c.title)).toEqual([
+      "Перший",
+      "Другий",
+      "Третій",
+    ]);
   });
 
   it("reads the author, and names a book without a title by its file name", async () => {
     const items = [{ id: "a", href: "a.xhtml", body: `<p>${LONG}</p>` }];
-    const withAuthor = await buildEpub({ items, metadata: "<dc:title>Кобзар</dc:title><dc:creator>Тарас Шевченко</dc:creator>" });
-    expect(await parseEpub(withAuthor, "x.epub")).toMatchObject({ title: "Кобзар", author: "Тарас Шевченко" });
-    const untitled = await parseEpub(await buildEpub({ items, metadata: "" }), "Шевченко_Кобзар.epub");
-    expect(untitled).toMatchObject({ title: "Шевченко Кобзар", author: undefined });
+    const withAuthor = await buildEpub({
+      items,
+      metadata:
+        "<dc:title>Кобзар</dc:title><dc:creator>Тарас Шевченко</dc:creator>",
+    });
+    expect(await parseEpub(withAuthor, "x.epub")).toMatchObject({
+      title: "Кобзар",
+      author: "Тарас Шевченко",
+    });
+    const untitled = await parseEpub(
+      await buildEpub({ items, metadata: "" }),
+      "Шевченко_Кобзар.epub",
+    );
+    expect(untitled).toMatchObject({
+      title: "Шевченко Кобзар",
+      author: undefined,
+    });
   });
 
   it("takes chapter titles from toc.ncx when there is no nav", async () => {
@@ -96,11 +133,22 @@ describe("parseEpub", () => {
             body: `<div id="p1"><p>Частина друга</p></div><span id="c1"><p>Розділ I. Риба</p><p>${LONG}</p></span><span id="c2"><p>Розділ II. Пляшка</p><p>${LONG}</p></span>`,
           },
         ],
-        ncx: { "a.xhtml#p1": "Частина друга", "a.xhtml#c1": "Розділ I. Риба", "a.xhtml#c2": "Розділ II. Пляшка" },
+        ncx: {
+          "a.xhtml#p1": "Частина друга",
+          "a.xhtml#c1": "Розділ I. Риба",
+          "a.xhtml#c2": "Розділ II. Пляшка",
+        },
       }),
     );
-    expect(book.chapters.map((c) => c.title)).toEqual(["Розділ I. Риба", "Розділ II. Пляшка"]);
-    expect(book.chapters[0].text.startsWith("Частина друга\nРозділ I. Риба\nЦе довгий")).toBe(true);
+    expect(book.chapters.map((c) => c.title)).toEqual([
+      "Розділ I. Риба",
+      "Розділ II. Пляшка",
+    ]);
+    expect(
+      book.chapters[0].text.startsWith(
+        "Частина друга\nРозділ I. Риба\nЦе довгий",
+      ),
+    ).toBe(true);
     expect(book.chapters[1].text.startsWith("Розділ II. Пляшка\n")).toBe(true);
   });
 
@@ -120,7 +168,13 @@ describe("parseEpub", () => {
   it("keeps paragraph breaks, drops tags and decodes entities", async () => {
     const book = await parseEpub(
       await buildEpub({
-        items: [{ id: "a", href: "a.xhtml", body: `<p>Том&nbsp;і&amp;Джері</p><p><b>${LONG}</b></p>` }],
+        items: [
+          {
+            id: "a",
+            href: "a.xhtml",
+            body: `<p>Том&nbsp;і&amp;Джері</p><p><b>${LONG}</b></p>`,
+          },
+        ],
       }),
     );
     const text = book.chapters[0].text;
@@ -131,7 +185,13 @@ describe("parseEpub", () => {
   it("drops footnote markers like [1]", async () => {
     const book = await parseEpub(
       await buildEpub({
-        items: [{ id: "a", href: "a.xhtml", body: `<p>Протока<a href="#n1">[1]</a> і миля[23].</p><p>${LONG}</p>` }],
+        items: [
+          {
+            id: "a",
+            href: "a.xhtml",
+            body: `<p>Протока<a href="#n1">[1]</a> і миля[23].</p><p>${LONG}</p>`,
+          },
+        ],
       }),
     );
     expect(book.chapters[0].text.startsWith("Протока і миля.\n")).toBe(true);
@@ -146,14 +206,24 @@ describe("parseEpub skips pages that are not chapters", () => {
           { id: "a", href: "a.xhtml", body: `<p>${LONG}</p>` },
           { id: "notes", href: "notes.xhtml", body: `<p>${LONG}</p>` },
         ],
-        nav: Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`x${i}.xhtml`, `Довга назва розділу ${i}`])),
+        nav: Object.fromEntries(
+          Array.from({ length: 30 }, (_, i) => [
+            `x${i}.xhtml`,
+            `Довга назва розділу ${i}`,
+          ]),
+        ),
       }),
     );
     const opf = (await zip.file("OEBPS/content.opf")!.async("string"))
-      .replace(`<itemref idref="notes"/>`, `<itemref idref="notes" linear="no"/>`)
+      .replace(
+        `<itemref idref="notes"/>`,
+        `<itemref idref="notes" linear="no"/>`,
+      )
       .replace("</spine>", `<itemref idref="nav"/></spine>`);
     zip.file("OEBPS/content.opf", opf);
-    const book = await parseEpub(await zip.generateAsync({ type: "nodebuffer" }));
+    const book = await parseEpub(
+      await zip.generateAsync({ type: "nodebuffer" }),
+    );
     expect(book.chapters).toHaveLength(1);
   });
 });

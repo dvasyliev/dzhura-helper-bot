@@ -1,4 +1,10 @@
-import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  createReadStream,
+  existsSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { Readable } from "node:stream";
 
 /** Uploads videos to the owner's YouTube channel as unlisted, into one playlist, over plain REST. */
@@ -29,7 +35,10 @@ export function youtube(options: YouTubeOptions) {
   /** One login shared by uploads that need it at the same time. */
   let login: Promise<string> | undefined;
 
-  const load = (): Store => (existsSync(options.storeFile) ? JSON.parse(readFileSync(options.storeFile, "utf8")) : { videos: {} });
+  const load = (): Store =>
+    existsSync(options.storeFile)
+      ? JSON.parse(readFileSync(options.storeFile, "utf8"))
+      : { videos: {} };
   /** Re-reads the store before writing, so uploads running side by side keep each other's changes. */
   const update = (change: (store: Store) => void) => {
     const store = load();
@@ -40,23 +49,37 @@ export function youtube(options: YouTubeOptions) {
   async function token(form: Record<string, string>): Promise<Response> {
     return fetch(`${oauth}/token`, {
       method: "POST",
-      body: new URLSearchParams({ client_id: options.clientId, client_secret: options.clientSecret, ...form }),
+      body: new URLSearchParams({
+        client_id: options.clientId,
+        client_secret: options.clientSecret,
+        ...form,
+      }),
     });
   }
 
   /** An access token: from the saved refresh token, or by asking the owner to log in with a code. */
-  async function accessToken(askLogin: (url: string, code: string) => Promise<unknown>): Promise<string> {
+  async function accessToken(
+    askLogin: (url: string, code: string) => Promise<unknown>,
+  ): Promise<string> {
     const refreshToken = load().refreshToken;
     if (refreshToken) {
-      const res = await token({ grant_type: "refresh_token", refresh_token: refreshToken });
+      const res = await token({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      });
       if (res.ok) return (await res.json()).access_token;
     }
     login ??= deviceLogin(askLogin).finally(() => (login = undefined));
     return login;
   }
 
-  async function deviceLogin(askLogin: (url: string, code: string) => Promise<unknown>): Promise<string> {
-    const res = await fetch(`${oauth}/device/code`, { method: "POST", body: new URLSearchParams({ client_id: options.clientId, scope: SCOPE }) });
+  async function deviceLogin(
+    askLogin: (url: string, code: string) => Promise<unknown>,
+  ): Promise<string> {
+    const res = await fetch(`${oauth}/device/code`, {
+      method: "POST",
+      body: new URLSearchParams({ client_id: options.clientId, scope: SCOPE }),
+    });
     if (!res.ok) throw new Error(`Google: ${await res.text()}`);
     const device = await res.json();
     await askLogin(device.verification_url, device.user_code);
@@ -64,14 +87,18 @@ export function youtube(options: YouTubeOptions) {
     let interval = device.interval * 1000;
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, interval));
-      const poll = await token({ device_code: device.device_code, grant_type: "urn:ietf:params:oauth:grant-type:device_code" });
+      const poll = await token({
+        device_code: device.device_code,
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      });
       const answer = await poll.json();
       if (poll.ok) {
         update((store) => (store.refreshToken = answer.refresh_token));
         return answer.access_token;
       }
       if (answer.error === "slow_down") interval += 5000;
-      else if (answer.error !== "authorization_pending") throw new Error(`Google: ${answer.error}`);
+      else if (answer.error !== "authorization_pending")
+        throw new Error(`Google: ${answer.error}`);
     }
     throw new Error("Google: expired_token");
   }
@@ -85,25 +112,42 @@ export function youtube(options: YouTubeOptions) {
   /** An old copy that cannot be deleted stays; already gone (404) is fine. */
   async function deleteVideo(id: string, auth: Record<string, string>) {
     try {
-      const res = await fetch(`${api}/youtube/v3/videos?id=${id}`, { method: "DELETE", headers: auth });
-      if (!res.ok && res.status !== 404) console.error(`YouTube: could not delete ${id}: ${res.status} ${await res.text()}`);
+      const res = await fetch(`${api}/youtube/v3/videos?id=${id}`, {
+        method: "DELETE",
+        headers: auth,
+      });
+      if (!res.ok && res.status !== 404)
+        console.error(
+          `YouTube: could not delete ${id}: ${res.status} ${await res.text()}`,
+        );
     } catch (error) {
       console.error(`YouTube: could not delete ${id}:`, error);
     }
   }
 
-  async function addToPlaylist(id: string, auth: Record<string, string>): Promise<boolean> {
+  async function addToPlaylist(
+    id: string,
+    auth: Record<string, string>,
+  ): Promise<boolean> {
     for (let attempt = 1; attempt <= PLAYLIST_TRIES; attempt++) {
       try {
         await call(`${api}/youtube/v3/playlistItems?part=snippet`, {
           method: "POST",
           headers: { ...auth, "content-type": "application/json" },
-          body: JSON.stringify({ snippet: { playlistId: options.playlistId, resourceId: { kind: "youtube#video", videoId: id } } }),
+          body: JSON.stringify({
+            snippet: {
+              playlistId: options.playlistId,
+              resourceId: { kind: "youtube#video", videoId: id },
+            },
+          }),
         });
         return true;
       } catch (error) {
         console.error(`YouTube: playlist add, try ${attempt}:`, error);
-        if (attempt < PLAYLIST_TRIES) await new Promise((resolve) => setTimeout(resolve, options.retryMs ?? 3000));
+        if (attempt < PLAYLIST_TRIES)
+          await new Promise((resolve) =>
+            setTimeout(resolve, options.retryMs ?? 3000),
+          );
       }
     }
     return false;
@@ -116,19 +160,40 @@ export function youtube(options: YouTubeOptions) {
       askLogin: (url: string, code: string) => Promise<unknown>,
     ): Promise<{ url: string; inPlaylist: boolean }> {
       const auth = { authorization: `Bearer ${await accessToken(askLogin)}` };
-      const title = [...video.title.replaceAll("<", "‹").replaceAll(">", "›")].slice(0, MAX_TITLE).join("");
+      const title = [...video.title.replaceAll("<", "‹").replaceAll(">", "›")]
+        .slice(0, MAX_TITLE)
+        .join("");
       const size = statSync(video.file).size;
-      const session = await call(`${api}/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status`, {
-        method: "POST",
-        headers: { ...auth, "content-type": "application/json", "x-upload-content-type": "video/mp4", "x-upload-content-length": String(size) },
-        body: JSON.stringify({
-          snippet: { title, description: video.description, categoryId: "10" },
-          status: { privacyStatus: "unlisted", selfDeclaredMadeForKids: false },
-        }),
-      });
+      const session = await call(
+        `${api}/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status`,
+        {
+          method: "POST",
+          headers: {
+            ...auth,
+            "content-type": "application/json",
+            "x-upload-content-type": "video/mp4",
+            "x-upload-content-length": String(size),
+          },
+          body: JSON.stringify({
+            snippet: {
+              title,
+              description: video.description,
+              categoryId: "10",
+            },
+            status: {
+              privacyStatus: "unlisted",
+              selfDeclaredMadeForKids: false,
+            },
+          }),
+        },
+      );
       const uploaded = await call(session.headers.get("location")!, {
         method: "PUT",
-        headers: { ...auth, "content-type": "video/mp4", "content-length": String(size) },
+        headers: {
+          ...auth,
+          "content-type": "video/mp4",
+          "content-length": String(size),
+        },
         body: Readable.toWeb(createReadStream(video.file)) as ReadableStream,
         duplex: "half",
       } as RequestInit);
@@ -137,7 +202,10 @@ export function youtube(options: YouTubeOptions) {
       const old = load().videos[video.title];
       update((store) => (store.videos[video.title] = id));
       if (old && old !== id) await deleteVideo(old, auth);
-      return { url: `https://youtu.be/${id}`, inPlaylist: await addToPlaylist(id, auth) };
+      return {
+        url: `https://youtu.be/${id}`,
+        inPlaylist: await addToPlaylist(id, auth),
+      };
     },
   };
 }

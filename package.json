@@ -10,7 +10,16 @@
     "test": "vitest run",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "sample": "tsx src/features/audiobook/sample.ts"
+    "sample": "tsx src/features/audiobook/sample.ts",
+    "check": ".claude/hooks/check-all.sh --force",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "format:file": "prettier --write",
+    "lint": "oxlint --deny-warnings",
+    "lint:file": "oxlint --deny-warnings",
+    "knip": "knip --no-progress --reporter compact",
+    "dupes": "jscpd src --threshold 0 --reporters console --format \"javascript,typescript,jsx,tsx,python\"",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "keywords": [],
   "author": "",
@@ -23,7 +32,16 @@
     "node-html-parser": "^9.0.7"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.1.0",
     "@types/node": "^26.6.7",
+    "jscpd": "^5.4.3",
+    "knip": "^6.48.0",
+    "lint-staged": "^17.6.2",
+    "oxlint": "^1.95.0",
+    "prettier": "^3.10.1",
+    "secretlint": "^14.1.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^4.1.12"

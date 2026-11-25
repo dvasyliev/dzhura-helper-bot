@@ -13,7 +13,9 @@ describe("startJob", () => {
     await vi.waitFor(() => expect(busyWith()).toBeUndefined());
 
     const onError = vi.fn(async () => {});
-    expect(startJob("збій", () => Promise.reject(new Error("x")), onError)).toBe(true);
+    expect(
+      startJob("збій", () => Promise.reject(new Error("x")), onError),
+    ).toBe(true);
     await vi.waitFor(() => expect(busyWith()).toBeUndefined());
     expect(onError).toHaveBeenCalledOnce();
   });

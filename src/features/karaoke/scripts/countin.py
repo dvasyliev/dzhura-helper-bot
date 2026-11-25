@@ -24,4 +24,6 @@ def count_in(music_wav: str, first_word: float) -> tuple[float, list[float]]:
 
 
 def delay(lines: list[dict], by: float) -> list[dict]:
-    return [{**ln, "words": [{**w, "start": w["start"] + by, "end": w["end"] + by} for w in ln["words"]]} for ln in lines]
+    return [
+        {**ln, "words": [{**w, "start": w["start"] + by, "end": w["end"] + by} for w in ln["words"]]} for ln in lines
+    ]

@@ -53,9 +53,7 @@ def expand_abbreviations(text: str) -> str:
 
     units = "|".join(re.escape(u) for u in sorted(UNITS, key=len, reverse=True))
     text = re.sub(rf"\b(\d+)\s?({units})(?![\w'’ʼ])", lambda m: f"{m[1]} {plural(int(m[1]), UNITS[m[2]])}", text)
-    text = re.sub(
-        r"([£$€])\s?(\d+)\b", lambda m: f"{m[2]} {plural(int(m[2]), CURRENCIES[m[1]])}", text
-    )
+    text = re.sub(r"([£$€])\s?(\d+)\b", lambda m: f"{m[2]} {plural(int(m[2]), CURRENCIES[m[1]])}", text)
     text = re.sub(r"№\s?(\d+)", r"номер \1", text)
 
     # «у 1864 р.» → «у 1864 році», «26 липня 1864 р.» → «26 липня 1864 року».

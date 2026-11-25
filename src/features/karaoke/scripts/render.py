@@ -22,10 +22,37 @@ def render(work_dir: str, ass_path: str, audio: str, out: str, duration: float, 
     def encode(video_args: list[str], out: str) -> None:
         tmp = out + ".part.mp4"
         subprocess.run(
-            ["ffmpeg", "-v", "error", "-y", *inputs, "-map", "0:v", "-map", sound, *delay, "-vf", f"{pad}{BACKGROUND},ass={os.path.basename(ass_path)}",
-             "-c:v", "libx264", "-preset", "medium", *video_args, "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest", tmp],
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-y",
+                *inputs,
+                "-map",
+                "0:v",
+                "-map",
+                sound,
+                *delay,
+                "-vf",
+                f"{pad}{BACKGROUND},ass={os.path.basename(ass_path)}",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                *video_args,
+                "-c:a",
+                "aac",
+                "-b:a",
+                "160k",
+                "-movflags",
+                "+faststart",
+                "-shortest",
+                tmp,
+            ],
             check=True,
-            cwd=os.path.dirname(os.path.abspath(ass_path)),  # a bare file name: no filtergraph escaping of «'» in song names
+            cwd=os.path.dirname(
+                os.path.abspath(ass_path)
+            ),  # a bare file name: no filtergraph escaping of «'» in song names
         )
         os.replace(tmp, out)
 

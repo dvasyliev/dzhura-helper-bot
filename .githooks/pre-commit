@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# Before a commit: look for secrets in the staged files, and format and lint the staged code.
+# Claude's edits are formatted already; this covers commits made without it.
+# With installed packages, lint-staged does it (.lintstagedrc.json). Without them (a python project),
+# secretlint runs through npx, and ruff through uv when there is a pyproject.toml.
+if [ -x node_modules/.bin/lint-staged ]; then
+  if [ -f pnpm-lock.yaml ]; then pnpm exec lint-staged || exit 1; else npx --no-install lint-staged || exit 1; fi
+else
+  git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 sh -c '[ "$#" -eq 0 ] || exec npx -y -p secretlint@13.1.0 -p @secretlint/secretlint-rule-preset-recommend@13.1.0 secretlint "$@"' sh || exit 1
+fi
+if [ -f pyproject.toml ]; then
+  py=$(git diff --cached --name-only --diff-filter=ACMR -z -- '*.py' | tr '\0' '\n')
+  if [ -n "$py" ]; then
+    git diff --cached --name-only --diff-filter=ACMR -z -- '*.py' | xargs -0 uv run ruff format --check || exit 1
+    git diff --cached --name-only --diff-filter=ACMR -z -- '*.py' | xargs -0 uv run ruff check || exit 1
+  fi
+fi

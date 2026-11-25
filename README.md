@@ -87,13 +87,13 @@ data/karaoke/<виконавець> - <назва>/
 
 Застосунок у Google у статусі «Testing», тож вхід живе 7 днів: коли він протух, бот надсилає код для google.com/device — введіть його з будь-якого пристрою, і заливка продовжиться. Вхід і список залитих відео лежать у `data/youtube.json`.
 
-Тести Python-частини: `cd src/features/karaoke/scripts && uv run python test_karaoke.py`.
+Тести Python-частини: `uv run pytest src/features/karaoke`.
 
 ## Семпл
 
 `npm run sample -- "Жуль Верн - Діти капітана Гранта" 150` бере EPUB з папки `data/audiobook/Жуль Верн - Діти капітана Гранта/` і озвучує перші 150 слів кожним голосом поточного `TTS_PROVIDER` у `data/voice-samples/<провайдер>/<голос>.mp3`. У `data/voice-samples/<провайдер>/all/` лежать проби всіх голосів, з яких обирали.
 
-Тести Python-частини: `cd src/features/audiobook/scripts && uv run python test_numbers.py && uv run python test_text.py`.
+Тести Python-частини: `uv run pytest src/features/audiobook`.
 
 ## Ліміти Telegram
 

@@ -1,4 +1,4 @@
-"""Run: cd src/features/audiobook/scripts && uv run python test_numbers.py"""
+import pytest
 
 from numbers_uk import numbers_to_words
 
@@ -15,11 +15,7 @@ cases = {
     "Я і ти": "Я і ти",
 }
 
-failed = 0
-for given, expected in cases.items():
-    got = numbers_to_words(given)
-    if got != expected:
-        failed += 1
-        print(f"FAIL {given!r}\n  got      {got!r}\n  expected {expected!r}")
-print(f"{len(cases) - failed}/{len(cases)} passed")
-raise SystemExit(1 if failed else 0)
+
+@pytest.mark.parametrize(("given", "expected"), cases.items())
+def test_numbers_to_words(given: str, expected: str) -> None:
+    assert numbers_to_words(given) == expected

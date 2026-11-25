@@ -26,10 +26,12 @@ def parse_lrc(lrc: str) -> list[Line]:
         for minutes, seconds in re.findall(r"\[(\d+):(\d+(?:\.\d+)?)\]", m.group(1)):
             if text:
                 lines.append({"text": text, "lrc_start": round(int(minutes) * 60 + float(seconds), 3)})
-    return sorted(lines, key=lambda line: line["lrc_start"])
+    return sorted(lines, key=lambda line: line["lrc_start"] or 0.0)  # always set for LRC lines
 
 
-SECTION = re.compile(r"\(?(приспів|куплет|бридж|програш|припев|chorus|verse|bridge|pre-chorus|intro|outro)( ?\d+)?( ?x ?\d+)?\)?:?", re.I)
+SECTION = re.compile(
+    r"\(?(приспів|куплет|бридж|програш|припев|chorus|verse|bridge|pre-chorus|intro|outro)( ?\d+)?( ?x ?\d+)?\)?:?", re.I
+)
 
 
 def parse_plain(text: str) -> list[Line]:

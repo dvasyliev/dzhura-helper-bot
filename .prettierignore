@@ -1,0 +1,13 @@
+# Only JavaScript and TypeScript files are formatted. Everything else (Python, docs, JSON, notes such as CLAUDE.md,
+# Claude Code's own files) stays as written; the folders leading to code files are still searched.
+*
+!*/
+!*.js
+!*.mjs
+!*.cjs
+!*.ts
+!*.mts
+!*.cts
+node_modules
+.venv
+dist

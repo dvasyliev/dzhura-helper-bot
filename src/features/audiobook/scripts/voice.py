@@ -30,7 +30,11 @@ PROVIDERS = {"holos": holos.make, "fish": fish.make}
 def save(parts: list[bytes], audio_dir: str, name: str) -> list[str]:
     """Writes under temporary names, then renames the first file last: if «<name>.mp3» or
     «<name> (1).mp3» exists, the whole chapter is complete."""
-    files = [f"{audio_dir}/{name}.mp3"] if len(parts) == 1 else [f"{audio_dir}/{name} ({k + 1}).mp3" for k in range(len(parts))]
+    files = (
+        [f"{audio_dir}/{name}.mp3"]
+        if len(parts) == 1
+        else [f"{audio_dir}/{name} ({k + 1}).mp3" for k in range(len(parts))]
+    )
     for file, data in zip(files, parts):
         with open(f"{file}.part", "wb") as f:
             f.write(data)
@@ -50,9 +54,13 @@ def main() -> None:
     voice_chapter = PROVIDERS[job["provider"]]()
 
     with ProcessPoolExecutor(1) as pool:
-        texts = [pool.submit(prepare_file, c["text"], f"{job['text_dir']}/{c['name']}.txt", job["dictionary"]) for c in job["chapters"]]
+        texts = [
+            pool.submit(prepare_file, c["text"], f"{job['text_dir']}/{c['name']}.txt", job["dictionary"])
+            for c in job["chapters"]
+        ]
         reported = False
         for chapter, text in zip(job["chapters"], texts):
+            files: list[str] = []
             for attempt in (1, 2):
                 try:
                     with open(text.result(), encoding="utf-8") as f:

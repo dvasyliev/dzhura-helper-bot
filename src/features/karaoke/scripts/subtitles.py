@@ -45,7 +45,10 @@ def build_ass(lines: list[dict], width: int, height: int, title: str, count_in: 
     font = round(64 * s)
     slot_y = [height - round(160 * s), height - round(80 * s)]
     bar_w, bar_h, bar_y = round(360 * s), round(18 * s), round(230 * s)
-    lines = [{**ln, "text": ln["text"].strip(), "start": ln["words"][0]["start"], "end": ln["words"][-1]["end"]} for ln in lines]
+    lines = [
+        {**ln, "text": ln["text"].strip(), "start": ln["words"][0]["start"], "end": ln["words"][-1]["end"]}
+        for ln in lines
+    ]
     events: list[tuple[int, float, float, str, str]] = []  # layer, start, end, style, text
 
     prev_end = 0.0
@@ -53,7 +56,9 @@ def build_ass(lines: list[dict], width: int, height: int, title: str, count_in: 
         first = lines[block[0]]
         cd = min(COUNTDOWN_MAX, max(first["start"] - prev_end - 1.0, 1.5))
         if prev_end == 0.0 and first["start"] >= 5.5:
-            cd = min(cd, first["start"] - 2.5)  # leaves the first 2.5 s of the intro for the title card, 3‑2‑1 still fits
+            cd = min(
+                cd, first["start"] - 2.5
+            )  # leaves the first 2.5 s of the intro for the title card, 3‑2‑1 still fits
         cd_start, cd_end = max(0.0, first["start"] - cd), first["start"] - 0.15
         if prev_end == 0.0 and count_in:
             cd_start, beat = 0.0, count_in[1] - count_in[0]
@@ -68,8 +73,15 @@ def build_ass(lines: list[dict], width: int, height: int, title: str, count_in: 
         rect = f"m 0 0 l {bar_w} 0 {bar_w} {bar_h} 0 {bar_h}"
         fill_ms = round((cd_end - cd_start) * 1000)
         events.append((1, cd_start, cd_end, "Countdown", f"{{\\an7\\pos({x1},{y1})\\p1}}{rect}"))
-        events.append((2, cd_start, cd_end, "Countdown",
-                       f"{{\\an7\\pos({x1},{y1})\\1c{SUNG}\\clip({x1},{y1},{x1},{y2})\\t(0,{fill_ms},\\clip({x1},{y1},{x2},{y2}))\\p1}}{rect}"))
+        events.append(
+            (
+                2,
+                cd_start,
+                cd_end,
+                "Countdown",
+                f"{{\\an7\\pos({x1},{y1})\\1c{SUNG}\\clip({x1},{y1},{x1},{y2})\\t(0,{fill_ms},\\clip({x1},{y1},{x2},{y2}))\\p1}}{rect}",
+            )
+        )
         for n, t in ticks:
             events.append((3, t, t + beat, "Digit", f"{{\\an5\\pos({width // 2},{bar_y})}}{n}"))
 
@@ -104,9 +116,16 @@ def build_ass(lines: list[dict], width: int, height: int, title: str, count_in: 
                 left = width / 2 - w / 2
                 y = slot_y[k % 2] - size // 2
                 mark = f"m 0 0 l {round(10 * s)} 0 {round(10 * s)} {round(size * 0.8)} 0 {round(size * 0.8)}"
-                events.append((2, ln["start"] - lead, ln["start"] + 0.05, "Marker",
-                               f"{{\\an5\\move({left - MARKER_FROM * s:.0f},{y},{left - MARKER_TO * s:.0f},{y},0,{round(lead * 1000)})"
-                               f"\\fad(200,80)\\p1}}{mark}"))
+                events.append(
+                    (
+                        2,
+                        ln["start"] - lead,
+                        ln["start"] + 0.05,
+                        "Marker",
+                        f"{{\\an5\\move({left - MARKER_FROM * s:.0f},{y},{left - MARKER_TO * s:.0f},{y},0,{round(lead * 1000)})"
+                        f"\\fad(200,80)\\p1}}{mark}",
+                    )
+                )
         prev_end = lines[block[-1]]["end"]
 
     header = f"""[Script Info]
@@ -127,5 +146,8 @@ Style: Marker,Arial,20,{SUNG},{SUNG},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    body = "".join(f"Dialogue: {layer},{ts(a)},{ts(b)},{style},,0,0,0,,{text}\n" for layer, a, b, style, text in sorted(events, key=lambda e: e[1]))
+    body = "".join(
+        f"Dialogue: {layer},{ts(a)},{ts(b)},{style},,0,0,0,,{text}\n"
+        for layer, a, b, style, text in sorted(events, key=lambda e: e[1])
+    )
     return header + body

@@ -15,7 +15,23 @@ def separate(work_dir: str) -> tuple[str, str]:
         return vocals, music
     os.makedirs(stems, exist_ok=True)
     song = os.path.join(stems, "song.wav")
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", os.path.join(work_dir, "clip.mp4"), "-vn", "-ac", "2", "-ar", "44100", song], check=True)
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            os.path.join(work_dir, "clip.mp4"),
+            "-vn",
+            "-ac",
+            "2",
+            "-ar",
+            "44100",
+            song,
+        ],
+        check=True,
+    )
 
     from audio_separator.separator import Separator
 

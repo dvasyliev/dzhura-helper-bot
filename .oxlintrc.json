@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "oxc", "import", "node"],
+  "ignorePatterns": ["node_modules", "dist"],
+  "rules": {
+    "import/no-cycle": "error",
+    "max-lines": ["error", { "max": 400, "skipBlankLines": true, "skipComments": true }]
+  }
+}

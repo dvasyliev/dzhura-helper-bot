@@ -3,7 +3,9 @@ const MAX_NAME_CHARS = 100;
 
 /** «001 Розділ I. Риба-молот»: the number keeps files in reading order. Used for text and audio files. */
 export function chapterName(index: number, title: string): string {
-  return safeFilename(`${String(index).padStart(3, "0")} ${title}`).slice(0, MAX_NAME_CHARS).trim();
+  return safeFilename(`${String(index).padStart(3, "0")} ${title}`)
+    .slice(0, MAX_NAME_CHARS)
+    .trim();
 }
 
 export function safeFilename(name: string): string {
@@ -34,13 +36,18 @@ export function bookPaths(name: string, voiceName: string) {
 export function findBooks(query: string, names: string[]): string[] {
   const norm = (s: string) => s.toLowerCase().replace(/[’ʼ`]/g, "'");
   const words = norm(query).split(/\s+/).filter(Boolean);
-  return words.length ? names.filter((name) => words.every((w) => norm(name).includes(w))) : [];
+  return words.length
+    ? names.filter((name) => words.every((w) => norm(name).includes(w)))
+    : [];
 }
 
 /** Cyrillic text with more і/ї/є/ґ than ы/э/ъ/ё (Russian). */
 export function isUkrainian(text: string): boolean {
   const count = (letters: RegExp) => text.match(letters)?.length ?? 0;
-  return count(/[а-яіїєґ]/gi) > count(/[a-z]/gi) && count(/[іїєґ]/gi) > count(/[ыэъё]/gi);
+  return (
+    count(/[а-яіїєґ]/gi) > count(/[a-z]/gi) &&
+    count(/[іїєґ]/gi) > count(/[ыэъё]/gi)
+  );
 }
 
 // Measured on «Діти капітана Гранта», HolosTTS on an Apple M5, with pauses and accentuk:
@@ -51,15 +58,21 @@ const GENERATION_SECONDS_PER_CHAR = 0.0042;
 
 /** «≈18 год 10 хв аудіо, ≈520 МБ (найбільший розділ ≈21 МБ)», plus voicing time when it is known:
  * for all of `chapterChars` and for the first of them, the first file the owner gets. */
-export function forecast(chapterChars: number[], withVoicingTime: boolean): string {
+export function forecast(
+  chapterChars: number[],
+  withVoicingTime: boolean,
+): string {
   const minutes = (chars: number) => chars / CHARS_PER_MINUTE;
   const total = chapterChars.reduce((a, b) => a + b, 0);
-  const mb = (chars: number) => Math.max(1, Math.round(minutes(chars) * MB_PER_MINUTE));
+  const mb = (chars: number) =>
+    Math.max(1, Math.round(minutes(chars) * MB_PER_MINUTE));
   const lines = [
     `≈${duration(minutes(total))} аудіо, ≈${mb(total)} МБ (найбільший розділ ≈${mb(Math.max(...chapterChars))} МБ).`,
   ];
   if (withVoicingTime)
-    lines.push(`Перший розділ буде за ≈${voicingTime(chapterChars[0])}, уся озвучка займе ≈${voicingTime(total)}.`);
+    lines.push(
+      `Перший розділ буде за ≈${voicingTime(chapterChars[0])}, уся озвучка займе ≈${voicingTime(total)}.`,
+    );
   return lines.join("\n");
 }
 
