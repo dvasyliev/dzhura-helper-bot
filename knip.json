@@ -15,6 +15,7 @@
     ".claude/**"
   ],
   "ignoreBinaries": [
-    "uv"
+    "uv",
+    "pandoc"
   ]
 }

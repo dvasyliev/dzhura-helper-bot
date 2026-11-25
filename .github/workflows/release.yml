@@ -1,5 +1,6 @@
 # Publishes a GitHub Release for each version tag the pre-push hook pushes, with that version's
-# section of CHANGELOG.md as the notes. Run it by hand to publish an existing tag.
+# section of CHANGELOG.md on main as the notes, so a fix to an older section still reaches its
+# release. Run it by hand to publish an existing tag.
 name: Release
 
 on:
@@ -23,10 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TAG }}
+          ref: main
       - name: Notes from the changelog
         run: |
           version="${TAG#v}"
           awk -v v="$version" '$0 ~ "^## " v " " {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
           test -s notes.md || { echo "no CHANGELOG.md section for $version"; exit 1; }
-      - run: gh release create "$TAG" --title "$TAG" --notes-file notes.md --verify-tag
+      # A release that already exists gets the notes again (a rerun after a changelog fix).
+      - run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then gh release edit "$TAG" --notes-file notes.md
+          else gh release create "$TAG" --title "$TAG" --notes-file notes.md --verify-tag; fi

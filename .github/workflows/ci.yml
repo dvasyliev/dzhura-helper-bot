@@ -17,11 +17,25 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: true
       - run: npm ci
       - run: uv sync --frozen
+      # What the tests need outside the packages, as SETUP.md installs it: ffmpeg with libass for
+      # karaoke, the stress model and the Wiktionary stress index for audiobook (cached, ~700 MB).
+      - run: brew tap homebrew-ffmpeg/ffmpeg && brew install homebrew-ffmpeg/ffmpeg/ffmpeg
+      - uses: actions/cache@v6
+        id: stress
+        with:
+          path: |
+            ~/.cache/accentuk
+            ~/.cache/audiobook-bot
+          key: stress-${{ hashFiles('uv.lock', 'src/features/audiobook/scripts/uk/stress_index.py') }}
+      - if: steps.stress.outputs.cache-hit != 'true'
+        run: |
+          uv run accentuk download --light
+          uv run python src/features/audiobook/scripts/uk/stress_index.py
       - run: npm run check
 
   commitlint:

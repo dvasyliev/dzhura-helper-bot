@@ -41,11 +41,17 @@ export function toMarkdown(book: Book): string {
   for (const chapter of book.chapters) {
     lines.push(`# ${oneLine(chapter.title)}`, "");
     for (const paragraph of chapter.text.split("\n")) {
-      const text = oneLine(paragraph);
-      if (text) lines.push(text.startsWith("#") ? `\\${text}` : text, "");
+      const text = markdownParagraph(paragraph);
+      if (text) lines.push(text, "");
     }
   }
   return lines.join("\n");
+}
+
+/** One paragraph as a book.md line; a leading `#` is escaped so it is not read as a chapter. Empty when blank. */
+export function markdownParagraph(paragraph: string): string {
+  const text = oneLine(paragraph);
+  return text.startsWith("#") ? `\\${text}` : text;
 }
 
 function oneLine(text: string): string {

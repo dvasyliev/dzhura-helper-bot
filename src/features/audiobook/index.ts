@@ -2,6 +2,7 @@ import { Composer, InlineKeyboard, type Context } from "grammy";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { config } from "../../config.ts";
 import { busyWith, startJob } from "../../jobs.ts";
+import { translateButton } from "../translate/button.ts";
 import type { Feature } from "../types.ts";
 import { notify, message, voiceBook } from "./deliver.ts";
 import { placeSource, readPdf } from "./pdf.ts";
@@ -25,6 +26,7 @@ import {
   parseNumbers,
   safeFilename,
   voicingTime,
+  type BookLanguage,
   type Language,
 } from "./text.ts";
 import {
@@ -40,6 +42,8 @@ const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024; // Telegram Bot API getFile limit
 const BATCH = 5;
 const TYPE_RANGE = "Or type chapter numbers, for example 10-20.";
 const ONLY_LANGUAGES = "I voice only Ukrainian and English books.";
+const RUSSIAN =
+  "I can't voice Russian books, but I can translate this one into Ukrainian.";
 const SCAN =
   "This PDF looks like a scan; I can read only PDFs with a text layer for now.";
 
@@ -78,7 +82,7 @@ composer.on("message:document", async (ctx, next) => {
     await mkdir(dir, { recursive: true });
     await writeFile(`${dir}/${safeFilename(name)}`, data);
     await placeSource(dir, [safeFilename(name)]);
-    await offer(ctx, book, language);
+    await offerBook(ctx, book, language);
   } catch (error) {
     await ctx.reply(`Error: ${message(error)}`);
   }
@@ -101,9 +105,7 @@ async function startPdf(ctx: Context, data: Buffer, name: string) {
     if (book === "scan") return notify(ctx.api, chatId, SCAN);
     if (!book.chapters.length)
       return notify(ctx.api, chatId, "Found no chapter with text in the book.");
-    const language = languageOf(book);
-    if (!language) return notify(ctx.api, chatId, ONLY_LANGUAGES);
-    await offer(ctx, book, language);
+    await offerBook(ctx, book);
   };
   const stopped = (error: unknown) =>
     notify(ctx.api, chatId, `Reading the PDF stopped: ${message(error)}`);
@@ -236,9 +238,7 @@ composer.callbackQuery(/^book:(.+)$/, async (ctx) => {
       return ctx.reply(
         `The folder «${folder}» has no EPUB or book.md. Send the book again.`,
       );
-    const language = languageOf(book);
-    if (!language) return ctx.reply(ONLY_LANGUAGES);
-    await offer(ctx, book, language);
+    await offerBook(ctx, book);
   } catch (error) {
     await ctx.reply(`Error: ${message(error)}`);
   }
@@ -346,13 +346,28 @@ async function openMenu(ctx: Context) {
   await ctx.reply(`${text}\n\nNot finished:`, { reply_markup: keyboard });
 }
 
-function languageOf(book: Book): Language | undefined {
-  const language = bookLanguage(book.chapters.map((c) => c.text).join("\n"));
-  return language === "ru" ? undefined : language;
+function languageOf(book: Book): BookLanguage | undefined {
+  return bookLanguage(book.chapters.map((c) => c.text).join("\n"));
 }
 
-/** What is already voiced, the forecast and the buttons with the voices of the book's language. */
-async function offer(ctx: Context, book: Book, language: Language) {
+/** The voices for a Ukrainian or English book; a Russian one can only be translated. */
+async function offerBook(
+  ctx: Context,
+  book: Book,
+  language = languageOf(book),
+) {
+  if (!language) return ctx.reply(ONLY_LANGUAGES);
+  if (language === "ru")
+    return ctx.reply(RUSSIAN, {
+      reply_markup: new InlineKeyboard().add(
+        translateButton(safeFilename(bookName(book))),
+      ),
+    });
+  await offer(ctx, book, language);
+}
+
+/** What is already voiced, the forecast and the buttons with the voices of the book's language; an English book can also be translated. */
+export async function offer(ctx: Context, book: Book, language: Language) {
   pending = book;
   choosing = undefined;
   const all = chapters(book);
@@ -365,6 +380,8 @@ async function offer(ctx: Context, book: Book, language: Language) {
   ];
   const keyboard = new InlineKeyboard();
   for (const voice of voices) keyboard.text(voice.name, `voice:${voice.id}`);
+  if (language === "en")
+    keyboard.row().add(translateButton(safeFilename(bookName(book))));
   await ctx.reply(lines.join("\n"), { reply_markup: keyboard });
 }
 

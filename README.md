@@ -51,7 +51,7 @@ Features that would reuse what is already here (Whisper, vocal separation, Holos
 You need a Mac with Apple Silicon and about 6 GB for models.
 
 ```bash
-brew install node uv
+brew install node uv pandoc   # pandoc builds the translated EPUB
 npm install
 uv sync
 cp .env.example .env   # fill in BOT_TOKEN and OWNER_ID
