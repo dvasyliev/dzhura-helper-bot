@@ -53,7 +53,7 @@ are run through `uv` and talk to Node with JSON lines, the same way `voice.py` d
 |---|---|---|
 | Download video+audio, 720p | `yt-dlp` | ~5 s |
 | Separate vocals | `audio-separator`, model `vocals_mel_band_roformer.ckpt` | ~50 s |
-| Detect language, transcribe vocals | Whisper (`mlx-whisper`) | not measured yet |
+| Detect language, transcribe vocals | Whisper (`mlx-whisper`) | 6–10 s |
 | Find lyrics | LRCLIB HTTP API | <1 s |
 | Align words | `ctc-forced-aligner` (MMS model, romanized) | ~7 s |
 | Build subtitles | our `.ass` generator | <1 s |
@@ -110,10 +110,17 @@ are run through `uv` and talk to Node with JSON lines, the same way `voice.py` d
 
 ## Data layout
 
-`data/karaoke/<youtube-id>/` holds `clip.mp4`, `stems/`, `meta.json` (artist,
-title, language, chosen lyrics source), `lyrics.json`, `aligned.json`,
-`karaoke.ass` and `karaoke-<vocals|music>.mp4`. Re-sending the same link reuses
-finished steps.
+Songs are named like the books: «Artist - Title», or the YouTube video title when
+the artist or title is unknown. `data/karaoke/<Artist - Title>/` holds `clip.mp4`,
+`stems/`, `meta.json` (YouTube id, artist, title), `listen.json`, `мій текст.txt`
+(lyrics the owner sent or took from the transcript; reused on later runs and
+editable), `lyrics.json`,
+`aligned.json`, `karaoke.ass` and the videos, labelled the way karaoke channels do
+in the song's language: `<Artist - Title> (Караоке).mp4` and `(Караоке з голосом)`;
+`(Караоке с голосом)` for Russian; `(Karaoke Version)` and `(Karaoke with Vocals)`
+for English. Re-sending the same link finds the folder by
+the id in `meta.json` and reuses finished steps. A second clip with the same name
+gets « (<id>)» added to its folder.
 
 ## Dependencies
 
@@ -132,8 +139,13 @@ finished steps.
 
 ## Risks and open questions
 
-- Whisper language detection and transcription on singing are not measured yet.
-  Check them first on 5–10 UA/RU/EN songs before building the bot part.
+- Whisper (large-v3-turbo) was measured on 3 songs. It took 6–10 s per song and
+  detected the language correctly each time (`uk`, `ru`, `en`). The share of
+  lyrics words it heard was 0.59 for «Саша» UA, 0.75 for «Саша» RU and 0.98 for
+  Coldplay «Yellow». For the wrong lyrics (UA on the RU clip) it was 0.15, so the
+  match threshold is 0.37. Ukrainian singing is transcribed worst (e.g. «Зрози
+  падають мовро»). Re-check the threshold when a correct song is reported as a
+  mismatch.
 - Rap, heavy backing vocals and duet overlaps align worse. They are accepted for
   now.
 - The «з розпізнаного» quality on Ukrainian singing may be poor, which is why the
@@ -141,7 +153,6 @@ finished steps.
 
 ## Prototype
 
-A working prototype (not in the repo) produced the reference video for «Саша».
-It lives in the session scratchpad: `align_words.py` (full + sanity re-align) and
-`render_ass.py` (style, countdown, marker). These will be moved into
-`src/features/karaoke/scripts/` during implementation.
+The prototype that produced the reference video for «Саша» (`align_words.py` and
+`render_ass.py`) has been moved into `src/features/karaoke/scripts/` as
+`align.py`, `subtitles.py` and `render.py`.

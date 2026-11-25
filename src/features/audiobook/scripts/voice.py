@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore")
 
 import fish  # noqa: E402
 import holos  # noqa: E402
-from prepare import apply_dictionary, load_dictionary, prepare_file, write_report  # noqa: E402
+from prepare import apply_dictionary, load_stress, prepare_file, write_report  # noqa: E402
 
 PROVIDERS = {"holos": holos.make, "fish": fish.make}
 
@@ -56,7 +56,7 @@ def main() -> None:
             for attempt in (1, 2):
                 try:
                     with open(text.result(), encoding="utf-8") as f:
-                        prepared = apply_dictionary(f.read(), load_dictionary(job["dictionary"]))  # may be edited meanwhile
+                        prepared = apply_dictionary(f.read(), load_stress(job["dictionary"]))  # may be edited meanwhile
                     files = save(voice_chapter(prepared, job["voice"]), job["audio_dir"], chapter["name"])
                     break
                 except Exception as error:

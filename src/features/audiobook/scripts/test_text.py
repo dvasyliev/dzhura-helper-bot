@@ -51,8 +51,11 @@ with tempfile.TemporaryDirectory() as d:
     assert not [n for n in os.listdir(d) if n.endswith(".part")]
     with open(f"{d}/book.txt", "w") as f:
         f.write("майорі́в\n")
-    text, unsure = prepare_text("Його книжка була тут.\nУ 1864 р. майорів прапор.", f"{d}/book.txt")
+    text, unsure, homographs = prepare_text("Його книжка була тут.\nУ 1864 р. майорів прапор. Йому дали замок, коли почув.", f"{d}/book.txt")
     assert text.startswith("Його́ кни́жка була́ "), text
     assert "майорі́в" in text, "book dictionary wins over the model"
     assert "ти́сяча вісімсо́т" in text, "numbers in words"
+    assert "Йому́" in text, "Wiktionary fixes a guessed stress"
+    assert "коли́ почу́в" in text, "stress rules for every book"
+    assert "замо́к" in homographs or "за́мок" in homographs, homographs
 print("ok")

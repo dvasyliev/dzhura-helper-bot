@@ -5,13 +5,20 @@ description = "Local Ukrainian TTS (HolosTTS) for the audiobook bot"
 requires-python = ">=3.12,<3.15"
 dependencies = [
     "accentuk==0.3.3",
+    "audio-separator[cpu]>=0.48",
+    "audioread>=3.1.0",
+    "ctc-forced-aligner",
     "holos-tts-mlx>=0.1",
     "ipa-uk",
     "lameenc>=1.9.0",
+    "mlx-whisper>=0.4.3",
     "num2words>=0.5.14",
     "numpy>=2.4.6",
+    "pillow>=13.0.0",
     "requests>=2.34.2",
+    "yt-dlp>=2026.11.23",
 ]
 
 [tool.uv.sources]
 ipa-uk = { git = "https://github.com/patriotyk/ipa-uk.git" }
+ctc-forced-aligner = { git = "https://github.com/MahmoudAshraf97/ctc-forced-aligner.git", rev = "277720ff832f6ec92bc97e32c7a6eda5dc466277" }

@@ -111,9 +111,10 @@ composer.command("regen", async (ctx) => {
   await ctx.reply(`Переозвучую ${todo.map((c) => `«${c.name}»`).join(", ")} голосом «${voice.name}».`);
 });
 
-// A book sent before, found by a word of its author or title.
+// A book sent before, found by a word of its author or title. Links and multi-line texts (song lyrics) are not titles.
 composer.on("message:text", async (ctx, next) => {
-  if (ctx.message.text.startsWith("/")) return next();
+  const text = ctx.message.text;
+  if (text.startsWith("/") || text.includes("\n") || /https?:\/\/|youtu\.?be/.test(text)) return next();
   const folders = await readdir(BOOKS_DIR, { withFileTypes: true }).catch(() => []);
   found = findBooks(ctx.message.text, folders.filter((f) => f.isDirectory()).map((f) => f.name)).slice(0, MAX_FOUND);
   if (!found.length) return ctx.reply("Такої книжки ще немає. Надішліть EPUB, щоб її озвучити.");
@@ -303,7 +304,7 @@ async function voiceBook(api: Api, chatId: number, book: Book, voice: Voice, tod
 async function sendReport(api: Api, chatId: number, file: string, words: number, dictionary: string): Promise<void> {
   try {
     await api.sendDocument(chatId, new InputFile(file), {
-      caption: `Наголос поставлено навмання в ${words} словах. Неправильні допишіть у ${dictionary} — наступні розділи вже їх врахують, а готові: /regen <номер>.`,
+      caption: `Слів, де варто перевірити наголос: ${words} (імена, невідомі слова, омографи). Неправильні допишіть у ${dictionary} — наступні розділи вже їх врахують, а готові: /regen <номер>.`,
     });
   } catch (error) {
     console.error("sendDocument failed:", error);
