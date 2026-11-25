@@ -34,6 +34,7 @@ from lyrics import (
 )  # noqa: E402
 from render import render  # noqa: E402
 from subtitles import build_ass  # noqa: E402
+from verify import verify  # noqa: E402
 
 UNSUPPORTED = "Підтримую лише українську, російську й англійську пісні."
 
@@ -93,15 +94,21 @@ def run(job: dict) -> None:
     emit({"step": "render"})
     title = f"{meta['artist']} — {meta['track']}" if meta["artist"] and meta["track"] else meta["title"]
     first_word = aligned[0]["words"][0]["start"]
-    pause, beats = count_in(music_wav, first_word) if first_word < SOON else (0.0, None)
+    pause, beats = count_in(music_wav) if first_word < SOON else (0.0, None)
     duration = meta["duration"] + pause
+    with open(os.path.join(work, "countin.json"), "w") as f:
+        json.dump({"pause": pause, "beats": beats or []}, f)
     ass_path = os.path.join(work, "karaoke.ass")
     with open(ass_path, "w") as f:
         f.write(build_ass(delay(aligned, pause), meta["width"], meta["height"], title, beats))
     for name, vocals in outputs(meta, language, job["versions"]):
         out, full = render(
-            work, ass_path, "clip" if vocals else music_wav, os.path.join(work, f"{name}.mp4"), duration, pause
+            work, ass_path, "clip" if vocals else music_wav, os.path.join(work, f"{name}.mp4"), duration, pause, beats
         )
+        problems = verify(work, os.path.basename(full))
+        with open(os.path.join(work, f"{name} - verify.txt"), "w") as f:
+            f.write("\n".join(problems) or "OK")
+        print(f"verify {name}: {len(problems)} problems", *problems, sep="\n", file=sys.stderr)
         emit(
             {
                 "video": out,

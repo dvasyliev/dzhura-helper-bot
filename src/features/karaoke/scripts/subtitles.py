@@ -10,6 +10,7 @@ FONT_FILE = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 SUNG = "&H00E0901E&"  # #1E90E0 in ASS BGR
 COUNTDOWN_GAP = 5.0  # a pause longer than this gets a countdown bar
 COUNTDOWN_MAX = 8.0
+DIGITS = 4  # the countdown digits 4-3-2-1, a second apart or squeezed into a shorter bar
 MARKER_GAP = 1.0  # a pause at least this long gets a marker before the line
 MARKER_LEAD = 1.5  # seconds the marker travels
 MARKER_FROM, MARKER_TO = 140, 16  # px left of the line at 720p
@@ -45,6 +46,7 @@ def build_ass(lines: list[dict], width: int, height: int, title: str, count_in: 
     font = round(64 * s)
     slot_y = [height - round(160 * s), height - round(80 * s)]
     bar_w, bar_h, bar_y = round(360 * s), round(18 * s), round(230 * s)
+    digit_y = round(370 * s)  # between the bar and the lyrics
     lines = [
         {**ln, "text": ln["text"].strip(), "start": ln["words"][0]["start"], "end": ln["words"][-1]["end"]}
         for ln in lines
@@ -61,33 +63,38 @@ def build_ass(lines: list[dict], width: int, height: int, title: str, count_in: 
             )  # leaves the first 2.5 s of the intro for the title card, 3‑2‑1 still fits
         cd_start, cd_end = max(0.0, first["start"] - cd), first["start"] - 0.15
         if prev_end == 0.0 and count_in:
-            cd_start, beat = 0.0, count_in[1] - count_in[0]
+            bar_start, beat = count_in[0], count_in[1] - count_in[0]
             ticks = [(len(count_in) - k, t) for k, t in enumerate(count_in)]
         else:
-            beat, ticks = 1.0, [(n, cd_end - n) for n in (3, 2, 1) if cd_end - n >= cd_start]
+            bar_start, beat = cd_start, min(1.0, (cd_end - cd_start) / DIGITS)
+            ticks = [(n, cd_end - n * beat) for n in range(DIGITS, 0, -1)]
         if prev_end == 0.0 and cd_start > 2.0:
             events.append((2, 0.3, cd_start - 0.2, "Title", f"{{\\fad(400,400)}}{title}"))
 
         x1, y1 = (width - bar_w) // 2, bar_y - bar_h // 2
         x2, y2 = x1 + bar_w, y1 + bar_h
         rect = f"m 0 0 l {bar_w} 0 {bar_w} {bar_h} 0 {bar_h}"
-        fill_ms = round((cd_end - cd_start) * 1000)
-        events.append((1, cd_start, cd_end, "Countdown", f"{{\\an7\\pos({x1},{y1})\\p1}}{rect}"))
+        fill_ms = round((cd_end - bar_start) * 1000)
+        events.append((1, bar_start, cd_end, "Countdown", f"{{\\an7\\pos({x1},{y1})\\p1}}{rect}"))
         events.append(
             (
                 2,
-                cd_start,
+                bar_start,
                 cd_end,
                 "Countdown",
                 f"{{\\an7\\pos({x1},{y1})\\1c{SUNG}\\clip({x1},{y1},{x1},{y2})\\t(0,{fill_ms},\\clip({x1},{y1},{x2},{y2}))\\p1}}{rect}",
             )
         )
         for n, t in ticks:
-            events.append((3, t, t + beat, "Digit", f"{{\\an5\\pos({width // 2},{bar_y})}}{n}"))
+            events.append((3, t, t + beat, "Digit", f"{{\\an5\\pos({width // 2},{digit_y})}}{n}"))
 
         shows = []
         for k, i in enumerate(block):
-            shows.append(cd_start if k < 2 else max(lines[block[k - 1]]["start"], lines[block[k - 2]]["end"] + 0.2))
+            shows.append(
+                max(bar_start, min(ticks[-1][1], first["start"] - MARKER_LEAD))
+                if k < 2
+                else max(lines[block[k - 1]]["start"], lines[block[k - 2]]["end"] + 0.2)
+            )
         for k, i in enumerate(block):
             ln = lines[i]
             show = shows[k]
@@ -140,7 +147,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Lyric,Arial,{font},{SUNG},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,40,40,40,1
 Style: Title,Arial,{round(84 * s)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,3,5,40,40,40,1
 Style: Countdown,Arial,20,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,7,0,0,0,1
-Style: Digit,Arial,{round(34 * s)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,0,5,0,0,0,1
+Style: Digit,Arial,{round(150 * s)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{round(6 * s)},0,5,0,0,0,1
 Style: Marker,Arial,20,{SUNG},{SUNG},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,5,0,0,0,1
 
 [Events]

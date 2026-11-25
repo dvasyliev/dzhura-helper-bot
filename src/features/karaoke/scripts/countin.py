@@ -6,8 +6,8 @@ BEATS = 4
 SOON = 4.0  # singing earlier than this has no room for a 3-2-1 countdown, so it gets a count-in
 
 
-def count_in(music_wav: str, first_word: float) -> tuple[float, list[float]]:
-    """(pause length, the count-in beats in the paused video): the last beats of the song's grid before the first word."""
+def count_in(music_wav: str) -> tuple[float, list[float]]:
+    """(pause length, its beats): the song's beat grid carried back into the pause, so the clicks end before the song."""
     import librosa
 
     y, sr = librosa.load(music_wav, sr=22050, mono=True, duration=60)
@@ -19,8 +19,7 @@ def count_in(music_wav: str, first_word: float) -> tuple[float, list[float]]:
         beat /= 2
     phase = float(beats[0]) % beat if len(beats) else 0.0
     pause = BEATS * beat
-    last = int((first_word + pause - 0.1 - phase) // beat)
-    return pause, [max(0.0, phase + (last - BEATS + 1 + k) * beat) for k in range(BEATS)]
+    return pause, [phase + k * beat for k in range(BEATS)]
 
 
 def delay(lines: list[dict], by: float) -> list[dict]:

@@ -40,7 +40,7 @@ dev = [
 # Scripts in src/features/*/scripts import their neighbours by bare name.
 known_first_party = [
     "abbreviations", "fish", "holos", "numbers_uk", "prepare", "sentences", "stress_index", "voice",
-    "align", "countin", "fetch", "karaoke", "listen", "lyrics", "render", "separate", "subtitles",
+    "align", "countin", "fetch", "karaoke", "listen", "lyrics", "render", "separate", "subtitles", "verify",
 ]
 # audioread: audio-separator needs it but does not declare it. pytest: imported only by the tests.
 per_rule_ignores = { DEP002 = ["audioread"], DEP004 = ["pytest"] }
