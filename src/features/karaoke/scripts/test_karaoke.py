@@ -72,8 +72,17 @@ with tempfile.TemporaryDirectory() as tmp:
                     "-shortest", "-c:v", "libx264", "-c:a", "aac", os.path.join(song, "clip.mp4")], check=True)
     with open(os.path.join(song, "karaoke.ass"), "w") as f:
         f.write(build_ass([{"text": "Раз", "words": [w("Раз", 0.2, 0.8)]}], 320, 180, "T"))
-    out = render(song, os.path.join(song, "karaoke.ass"), "clip", os.path.join(song, "out.mp4"), 1)
+    out, full = render(song, os.path.join(song, "karaoke.ass"), "clip", os.path.join(song, "out.mp4"), 1)
     assert os.path.getsize(out) > 0, "an apostrophe in the song's folder must not break ffmpeg"
+    assert out == full, "a video within Telegram's limit is also the full-quality one"
+    import render as render_module
+    limit, render_module.LIMIT = render_module.LIMIT, 1
+    try:
+        out, full = render(song, os.path.join(song, "karaoke.ass"), "clip", os.path.join(song, "big.mp4"), 1e-6)  # a tiny duration keeps the refit bitrate positive
+    finally:
+        render_module.LIMIT = limit
+    assert out != full and os.path.exists(out) and os.path.exists(full), "an oversized video keeps its full-quality copy for YouTube"
+    assert full.endswith("big (HQ).mp4"), full
 
 intro = build_ass([{"text": "Раз", "words": [w("Раз", 6.0, 6.5)]}], 1280, 720, "Artist — Song")
 assert "Artist — Song" in intro.split("[Events]")[1], "a 6 s intro still has room for the title card"
@@ -106,7 +115,43 @@ from fetch import video_name  # noqa: E402
 
 shugar = {"artist": "Шугар", "track": "Німесил", "title": ""}
 assert video_name(shugar, "uk", vocals=False) == "Шугар - Німесил (Караоке)"
-assert video_name(shugar, "uk", vocals=True) == "Шугар - Німесил (Караоке з голосом)"
-assert video_name(shugar, "ru", vocals=True) == "Шугар - Німесил (Караоке с голосом)"
-assert video_name({"artist": "Coldplay", "track": "Yellow", "title": ""}, "en", vocals=False) == "Coldplay - Yellow (Karaoke Version)"
-assert video_name({"artist": "Coldplay", "track": "Yellow", "title": ""}, "en", vocals=True) == "Coldplay - Yellow (Karaoke with Vocals)"
+assert video_name(shugar, "uk", vocals=True) == "Шугар - Німесил (Вокал)", "named like the buttons"
+assert video_name(shugar, "ru", vocals=True) == "Шугар - Німесил (Вокал)"
+assert video_name({"artist": "Coldplay", "track": "Yellow", "title": ""}, "en", vocals=False) == "Coldplay - Yellow (Karaoke)"
+assert video_name({"artist": "Coldplay", "track": "Yellow", "title": ""}, "en", vocals=True) == "Coldplay - Yellow (Vocals)"
+
+from fetch import outputs  # noqa: E402
+
+assert outputs(shugar, "uk", ["music", "vocals"]) == [("Шугар - Німесил (Караоке)", False), ("Шугар - Німесил (Вокал)", True)], "two versions, in the order asked"
+assert outputs(shugar, "uk", ["vocals"]) == [("Шугар - Німесил (Вокал)", True)]
+
+from countin import count_in, delay  # noqa: E402
+
+counted = build_ass([{"text": "Одразу", "words": [w("Одразу", 3.0, 3.5)]}], 1280, 720, "Назва", count_in=[0.1, 0.6, 1.1, 1.6])
+digits = [l for l in counted.splitlines() if ",Digit," in l]
+assert [l[-1] for l in digits] == ["4", "3", "2", "1"], "a count-in shows 4-3-2-1"
+assert digits[0].startswith("Dialogue: 3,0:00:00.10,0:00:00.60,"), "each digit on its beat, one beat long"
+assert "Dialogue: 1,0:00:00.00" in counted, "the bar fills over the whole pause"
+
+assert delay([{"text": "Раз", "words": [w("Раз", 0.5, 1.0)]}], 2.0) == [{"text": "Раз", "words": [w("Раз", 2.5, 3.0)]}]
+
+with tempfile.TemporaryDirectory() as tmp:
+    clicks = os.path.join(tmp, "clicks.wav")  # a click every 0.5 s (120 BPM), the first at 0.2 s
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=f=1000:d=0.03,apad=whole_dur=0.5", "-af", "adelay=200,aloop=loop=40:size=22050",
+                    "-ar", "44100", "-t", "20", clicks], check=True)
+    pause, beats = count_in(clicks, 1.0)
+    assert abs(pause - 2.0) < 0.1, pause
+    assert len(beats) == 4 and abs(beats[1] - beats[0] - 0.5) < 0.05, beats
+    assert abs(beats[-1] - 2.7) < 0.1, "«1» on the last beat before the first word (1.0 + 2.0 s pause), on the clicks' grid"
+
+with tempfile.TemporaryDirectory() as tmp:
+    song = os.path.join(tmp, "s")
+    os.makedirs(song)
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=320x180:d=1", "-f", "lavfi", "-i", "anullsrc=d=1",
+                    "-shortest", "-c:v", "libx264", "-c:a", "aac", os.path.join(song, "clip.mp4")], check=True)
+    with open(os.path.join(song, "karaoke.ass"), "w") as f:
+        f.write(build_ass([{"text": "Раз", "words": [w("Раз", 0.7, 1.2)]}], 320, 180, "T"))
+    out, _ = render(song, os.path.join(song, "karaoke.ass"), "clip", os.path.join(song, "out.mp4"), 1.5, pause=0.5)
+    length = lambda kind: float(subprocess.run(["ffprobe", "-v", "error", "-select_streams", kind, "-show_entries", "stream=duration", "-of", "csv=p=0", out],  # noqa: E731
+                                               capture_output=True, text=True, check=True).stdout)
+    assert abs(length("v") - 1.5) < 0.1 and abs(length("a") - 1.5) < 0.1, "the pause lengthens both picture and sound"

@@ -18,17 +18,22 @@ def song_name(meta: dict) -> str:
     return re.sub(r'[/\\:*?"<>|]', "_", name).strip(". ")[:MAX_NAME_CHARS].strip()  # a leading «.» would hide the folder
 
 
-# How karaoke channels label their videos, in the song's language: (music only, with vocals).
+# Video labels, like the bot's buttons, in the song's language: (music only, with vocals).
 KARAOKE_LABELS = {
-    "uk": ("Караоке", "Караоке з голосом"),
-    "ru": ("Караоке", "Караоке с голосом"),
-    "en": ("Karaoke Version", "Karaoke with Vocals"),
+    "uk": ("Караоке", "Вокал"),
+    "ru": ("Караоке", "Вокал"),
+    "en": ("Karaoke", "Vocals"),
 }
 
 
 def video_name(meta: dict, language: str, vocals: bool) -> str:
-    """«Шугар - Німесил (Караоке)», «Coldplay - Yellow (Karaoke with Vocals)»: the video's file name and title."""
+    """«Шугар - Німесил (Караоке)», «Coldplay - Yellow (Vocals)»: the video's file name and title."""
     return f"{song_name(meta)} ({KARAOKE_LABELS[language][vocals]})"
+
+
+def outputs(meta: dict, language: str, versions: list[str]) -> list[tuple[str, bool]]:
+    """(video name, with vocals) for each asked version ("music" or "vocals"), in the order asked."""
+    return [(video_name(meta, language, v == "vocals"), v == "vocals") for v in versions]
 
 
 def find_song(data_dir: str, video_id: str) -> str | None:

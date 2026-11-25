@@ -1,11 +1,11 @@
 """Makes a karaoke video from a YouTube clip.
 
 Reads a JSON job from stdin:
-  {"url": "https://youtu.be/B0bnhONb2kM", "id": "B0bnhONb2kM", "vocals": false, "data_dir": "data/karaoke",
+  {"url": "https://youtu.be/B0bnhONb2kM", "id": "B0bnhONb2kM", "versions": ["music", "vocals"], "data_dir": "data/karaoke",
    "lyrics_text": null, "use_transcript": false}
 Steps cache their output in the song's folder, <data_dir>/<Artist - Title>/ (found again by the id), so a second run of the same clip only redoes what changed.
 Prints JSON lines: {"step": "download"|"separate"|"listen"|"lyrics"|"align"|"render"} as each starts;
-then one of {"video": path, "title", "duration", "width", "height"},
+then a {"video": path, "full": full-quality path, "title", "duration", "width", "height"} per version in order, or
 {"need_lyrics": "not_found"|"mismatch", "transcript": "..."} or {"error": "..."}.
 Usage: echo '<job>' | uv run python src/features/karaoke/scripts/karaoke.py
 """
@@ -18,7 +18,8 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from align import ALIGNER_LANGUAGE, align  # noqa: E402
-from fetch import fetch, video_name  # noqa: E402
+from countin import SOON, count_in, delay  # noqa: E402
+from fetch import fetch, outputs  # noqa: E402
 from listen import listen  # noqa: E402
 from lyrics import MATCH_THRESHOLD, match_score, own_lyrics, parse_lrc, parse_plain, pick, search, split_title, text_language  # noqa: E402
 from render import render  # noqa: E402
@@ -81,12 +82,15 @@ def run(job: dict) -> None:
 
     emit({"step": "render"})
     title = f"{meta['artist']} — {meta['track']}" if meta["artist"] and meta["track"] else meta["title"]
+    first_word = aligned[0]["words"][0]["start"]
+    pause, beats = count_in(music_wav, first_word) if first_word < SOON else (0.0, None)
+    duration = meta["duration"] + pause
     ass_path = os.path.join(work, "karaoke.ass")
     with open(ass_path, "w") as f:
-        f.write(build_ass(aligned, meta["width"], meta["height"], title))
-    out = os.path.join(work, f"{video_name(meta, language, job['vocals'])}.mp4")
-    render(work, ass_path, "clip" if job["vocals"] else music_wav, out, meta["duration"])
-    emit({"video": out, "title": title, "duration": meta["duration"], "width": meta["width"], "height": meta["height"]})
+        f.write(build_ass(delay(aligned, pause), meta["width"], meta["height"], title, beats))
+    for name, vocals in outputs(meta, language, job["versions"]):
+        out, full = render(work, ass_path, "clip" if vocals else music_wav, os.path.join(work, f"{name}.mp4"), duration, pause)
+        emit({"video": out, "full": full, "title": title, "duration": duration, "width": meta["width"], "height": meta["height"]})
 
 
 if __name__ == "__main__":

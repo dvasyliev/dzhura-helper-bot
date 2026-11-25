@@ -1,18 +1,22 @@
 import { Composer, InlineKeyboard, InputFile, type Context } from "grammy";
 import path from "node:path";
+import { config } from "../../config.ts";
 import { busyWith, startJob } from "../../jobs.ts";
 import type { Feature } from "../types.ts";
 import { youtubeId } from "./link.ts";
-import { isSeparated, runKaraoke, type KaraokeEvent, type KaraokeJob } from "./pipeline.ts";
+import { estimate, friendly } from "./messages.ts";
+import { isSeparated, runKaraoke, type KaraokeEvent, type KaraokeJob, type Version } from "./pipeline.ts";
+import { youtube } from "./youtube.ts";
 
-const STEPS: Record<Extract<KaraokeEvent, { step: string }>["step"], string> = {
-  download: "⏳ 1/6 · Скачую кліп…",
-  separate: "⏳ 2/6 · Відділяю голос…",
-  listen: "⏳ 3/6 · Слухаю…",
-  lyrics: "⏳ 4/6 · Шукаю текст…",
-  align: "⏳ 5/6 · Синхронізую…",
-  render: "⏳ 6/6 · Рендерю…",
-};
+const STEPS = {
+  download: "Скачую кліп",
+  separate: "Відділяю голос",
+  listen: "Розпізнаю спів",
+  lyrics: "Шукаю текст",
+  align: "Підганяю слова під спів",
+  render: "Збираю відео",
+  upload: "Заливаю на YouTube",
+} satisfies Record<Extract<KaraokeEvent, { step: string }>["step"] | "upload", string>;
 /** Telegram shows «записує відео…» at the top of the chat for 5 s after each chat action. */
 const ACTION_EVERY_MS = 4000;
 const NO_LYRICS = { not_found: "Не знайшов текст цієї пісні.", mismatch: "Знайдений текст не збігається зі співом." };
@@ -21,12 +25,24 @@ const PASTE_WAIT_MS = 1500;
 /** Telegram's message limit is 4096 characters; a longer transcript goes as a file. */
 const MAX_MESSAGE_CHARS = 4000;
 const ANOTHER_SONG = "Ця кнопка від попередньої пісні. Надішліть посилання ще раз.";
+/** The owner's link-only karaoke playlist. */
+const PLAYLIST = "PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+const channel =
+  config.googleClientId && config.googleClientSecret
+    ? youtube({ clientId: config.googleClientId, clientSecret: config.googleClientSecret, playlistId: PLAYLIST, storeFile: "data/youtube.json" })
+    : undefined;
+
+/** «⏳ 3/7 · Слухаю…»; without YouTube there is no upload step. */
+function stepText(step: keyof typeof STEPS): string {
+  const steps = Object.keys(STEPS).filter((s) => channel || s !== "upload");
+  return `⏳ ${steps.indexOf(step) + 1}/${steps.length} · ${STEPS[step]}…`;
+}
 
 type Clip = { url: string; id: string };
 /** The link waiting for «лише музика чи з голосом». */
 let pending: Clip | undefined;
 /** The last job, re-run with the owner's or the recognized lyrics. */
-let last: (Clip & { vocals: boolean }) | undefined;
+let last: (Clip & { versions: Version[] }) | undefined;
 /** What Whisper heard in the last song without lyrics. */
 let heard = "";
 /** Parts of a pasted text waiting for the rest. */
@@ -39,8 +55,11 @@ composer.on("message:text", async (ctx, next) => {
   const id = youtubeId(text);
   if (id) {
     pending = { url: `https://www.youtube.com/watch?v=${id}`, id };
-    const keyboard = new InlineKeyboard().text("🎵 Лише музика", "karaoke:music").text("🎤 З голосом", "karaoke:vocals");
-    return ctx.reply(`Лише музика чи з голосом? Займе ≈${isSeparated(id) ? "1 хв" : "2–3 хв"}.`, { reply_markup: keyboard });
+    const keyboard = new InlineKeyboard()
+      .text("🎵 Караоке", "karaoke:music")
+      .text("🎤 Вокал", "karaoke:vocals")
+      .text("🎵🎤 Обидва", "karaoke:both");
+    return ctx.reply(`Яку версію зробити? ${estimate({ separated: isSeparated(id), youtube: !!channel })}`, { reply_markup: keyboard });
   }
   if (!last || !(text.includes("\n") || paste)) return next();
   const song = last;
@@ -55,9 +74,11 @@ composer.on("message:text", async (ctx, next) => {
   };
 });
 
-composer.callbackQuery(/^karaoke:(vocals|music)$/, async (ctx) => {
+const VERSIONS: Record<string, Version[]> = { music: ["music"], vocals: ["vocals"], both: ["music", "vocals"] };
+
+composer.callbackQuery(/^karaoke:(music|vocals|both)$/, async (ctx) => {
   if (!pending) return ctx.answerCallbackQuery("Надішліть посилання ще раз.");
-  await start(ctx, { ...pending, vocals: ctx.match[1] === "vocals" });
+  await start(ctx, { ...pending, versions: VERSIONS[ctx.match[1]] });
 });
 
 composer.callbackQuery(/^karaoke:mytext:(.+)$/, async (ctx) => {
@@ -83,11 +104,11 @@ export const karaoke: Feature = {
   composer,
 };
 
-/** Runs the job in the background, editing one status message, and sends the video or asks for lyrics. False if busy. */
+/** Runs the job in the background, editing one status message, and sends the YouTube link (or the video) or asks for lyrics. False if busy. */
 async function start(ctx: Context, job: KaraokeJob): Promise<boolean> {
   const chatId = ctx.chat!.id;
   const work = async () => {
-    const status = await ctx.api.sendMessage(chatId, STEPS.download);
+    const status = await ctx.api.sendMessage(chatId, stepText("download"));
     const working = () => void ctx.api.sendChatAction(chatId, "record_video").catch(() => {});
     working();
     const ticker = setInterval(working, ACTION_EVERY_MS);
@@ -98,13 +119,13 @@ async function start(ctx: Context, job: KaraokeJob): Promise<boolean> {
       await ctx.api.deleteMessage(chatId, status.message_id).catch(() => {});
     }
   };
-  const stopped = (error: unknown) => ctx.api.sendMessage(chatId, `Караоке не вийшло: ${message(error)}`).then(() => {}, console.error);
+  const stopped = (error: unknown) => ctx.api.sendMessage(chatId, `Караоке не вийшло: ${friendly(error)}`).then(() => {}, console.error);
   if (!startJob("караоке", work, stopped)) {
     const busy = `Зачекайте, зараз триває ${busyWith()}.`;
     await (ctx.callbackQuery ? ctx.answerCallbackQuery(busy) : ctx.reply(busy));
     return false;
   }
-  last = { url: job.url, id: job.id, vocals: job.vocals };
+  last = { url: job.url, id: job.id, versions: job.versions };
   pending = undefined;
   if (ctx.callbackQuery) {
     await ctx.answerCallbackQuery();
@@ -113,11 +134,12 @@ async function start(ctx: Context, job: KaraokeJob): Promise<boolean> {
   return true;
 }
 
-/** Edits the status message per step and sends the video or the lyrics buttons. */
+/** Edits the status message per step and sends each karaoke or the lyrics buttons. */
 async function follow(ctx: Context, chatId: number, statusId: number, job: KaraokeJob) {
+  const status = (step: keyof typeof STEPS) => ctx.api.editMessageText(chatId, statusId, stepText(step)).catch(() => {});
   for await (const event of runKaraoke(job)) {
     if ("step" in event) {
-      await ctx.api.editMessageText(chatId, statusId, STEPS[event.step]).catch(() => {});
+      await status(event.step);
     } else if ("needLyrics" in event) {
       heard = event.transcript;
       const keyboard = new InlineKeyboard()
@@ -127,22 +149,51 @@ async function follow(ctx: Context, chatId: number, statusId: number, job: Karao
     } else if ("error" in event) {
       throw new Error(event.error);
     } else {
-      const { video, title, duration, width, height } = event;
+      const name = path.basename(event.video, ".mp4");
+      if (!channel) {
+        await sendVideo(ctx, chatId, event);
+        continue;
+      }
+      await status("upload");
       try {
-        await ctx.api.sendVideo(chatId, new InputFile(video, path.basename(video)), {
-          caption: title,
-          duration: Math.round(duration),
-          width,
-          height,
-          supports_streaming: true,
-        });
+        const { url, inPlaylist } = await channel.publish({ file: event.full, title: name, description: `Оригінал: ${job.url}` }, (url, code) =>
+          askLogin(ctx, chatId, url, code),
+        );
+        await ctx.api.sendMessage(chatId, `<b>${escapeHtml(name)}</b>\n${url}${inPlaylist ? "" : "\n(у плейлист не додалось)"}`, { parse_mode: "HTML" });
       } catch (error) {
-        await ctx.api.sendMessage(chatId, `Не вдалося надіслати відео (${message(error)}). Файл: ${video}`);
+        await ctx.api.sendMessage(chatId, `Не залив на YouTube: ${friendly(error)}`);
+        await sendVideo(ctx, chatId, event);
       }
     }
   }
 }
 
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+/** How to log in, then the code alone, so it is easy to copy. */
+async function askLogin(ctx: Context, chatId: number, url: string, code: string) {
+  await ctx.api.sendMessage(
+    chatId,
+    `Щоб залити на YouTube, увійдіть: відкрийте ${url}, введіть код з наступного повідомлення й оберіть акаунт з каналом. ` +
+      "Якщо Google попередить, що застосунок не перевірений, натисніть «Продовжити». Після входу заливка продовжиться сама.",
+  );
+  await ctx.api.sendMessage(chatId, `<code>${escapeHtml(code)}</code>`, { parse_mode: "HTML" });
+}
+
+/** The video itself, when there is no YouTube link to send. */
+async function sendVideo(ctx: Context, chatId: number, event: Extract<KaraokeEvent, { video: string }>) {
+  const { video, title, duration, width, height } = event;
+  try {
+    await ctx.api.sendVideo(chatId, new InputFile(video, path.basename(video)), {
+      caption: title,
+      duration: Math.round(duration),
+      width,
+      height,
+      supports_streaming: true,
+    });
+  } catch (error) {
+    await ctx.api.sendMessage(chatId, `Не вдалося надіслати відео (${friendly(error)}). Файл: ${video}`);
+  }
+}
+
+function escapeHtml(text: string): string {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }

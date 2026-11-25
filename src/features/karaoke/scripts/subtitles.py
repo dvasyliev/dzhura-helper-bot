@@ -39,7 +39,8 @@ def _blocks(lines: list[dict]) -> list[list[int]]:
     return blocks
 
 
-def build_ass(lines: list[dict], width: int, height: int, title: str) -> str:
+def build_ass(lines: list[dict], width: int, height: int, title: str, count_in: list[float] | None = None) -> str:
+    """`count_in`: the beats of a pause added before the song; they get 4-3-2-1 instead of 3-2-1."""
     s = min(width, height) / 720  # 1 at 720p; a vertical clip (Shorts) is sized by its width
     font = round(64 * s)
     slot_y = [height - round(160 * s), height - round(80 * s)]
@@ -54,6 +55,11 @@ def build_ass(lines: list[dict], width: int, height: int, title: str) -> str:
         if prev_end == 0.0 and first["start"] >= 5.5:
             cd = min(cd, first["start"] - 2.5)  # leaves the first 2.5 s of the intro for the title card, 3‑2‑1 still fits
         cd_start, cd_end = max(0.0, first["start"] - cd), first["start"] - 0.15
+        if prev_end == 0.0 and count_in:
+            cd_start, beat = 0.0, count_in[1] - count_in[0]
+            ticks = [(len(count_in) - k, t) for k, t in enumerate(count_in)]
+        else:
+            beat, ticks = 1.0, [(n, cd_end - n) for n in (3, 2, 1) if cd_end - n >= cd_start]
         if prev_end == 0.0 and cd_start > 2.0:
             events.append((2, 0.3, cd_start - 0.2, "Title", f"{{\\fad(400,400)}}{title}"))
 
@@ -64,9 +70,8 @@ def build_ass(lines: list[dict], width: int, height: int, title: str) -> str:
         events.append((1, cd_start, cd_end, "Countdown", f"{{\\an7\\pos({x1},{y1})\\p1}}{rect}"))
         events.append((2, cd_start, cd_end, "Countdown",
                        f"{{\\an7\\pos({x1},{y1})\\1c{SUNG}\\clip({x1},{y1},{x1},{y2})\\t(0,{fill_ms},\\clip({x1},{y1},{x2},{y2}))\\p1}}{rect}"))
-        for n in (3, 2, 1):
-            if cd_end - n >= cd_start:
-                events.append((3, cd_end - n, cd_end - n + 1, "Digit", f"{{\\an5\\pos({width // 2},{bar_y})}}{n}"))
+        for n, t in ticks:
+            events.append((3, t, t + beat, "Digit", f"{{\\an5\\pos({width // 2},{bar_y})}}{n}"))
 
         shows = []
         for k, i in enumerate(block):

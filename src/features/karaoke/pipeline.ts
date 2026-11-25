@@ -7,16 +7,19 @@ export type KaraokeJob = {
   url: string;
   /** YouTube id; the song's folder is found by it, so a re-sent link reuses finished steps. */
   id: string;
-  vocals: boolean;
+  /** Which karaoke to make, in this order: music only, with the singer's voice, or both. */
+  versions: Version[];
   /** Lyrics typed by the owner, one line per line. */
   lyricsText?: string;
   /** Build the karaoke from what Whisper heard. */
   useTranscript?: boolean;
 };
 
+export type Version = "music" | "vocals";
+
 export type KaraokeEvent =
   | { step: "download" | "separate" | "listen" | "lyrics" | "align" | "render" }
-  | { video: string; title: string; duration: number; width: number; height: number }
+  | { video: string; /** The same video in full quality, for YouTube; equals `video` when it fits Telegram. */ full: string; title: string; duration: number; width: number; height: number }
   | { needLyrics: "not_found" | "mismatch"; transcript: string }
   | { error: string };
 
@@ -43,7 +46,7 @@ export async function* runKaraoke(job: KaraokeJob): AsyncGenerator<KaraokeEvent>
     JSON.stringify({
       url: job.url,
       id: job.id,
-      vocals: job.vocals,
+      versions: job.versions,
       data_dir: DATA_DIR,
       lyrics_text: job.lyricsText ?? null,
       use_transcript: job.useTranscript ?? false,
