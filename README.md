@@ -1,6 +1,6 @@
 # Dzhura
 
-A personal Telegram helper bot that runs on your own Mac. A *dzhura* was a Cossack's young helper who carried out any errand; this one turns books into audiobooks and songs into karaoke. It answers only its owner, and voicing and karaoke run locally on Apple Silicon.
+A personal Telegram helper bot that runs on your own Mac. A *dzhura* was a Cossack's young helper who carried out any errand; this one turns books into audiobooks, translates them into Ukrainian and turns songs into karaoke. It answers only its owner, and voicing and karaoke run locally on Apple Silicon.
 
 ## Features
 
@@ -8,7 +8,7 @@ A personal Telegram helper bot that runs on your own Mac. A *dzhura* was a Cossa
 |---|---|---|---|---|
 | 🎧 Audiobook | Voices EPUB and text PDF books and sends them to Telegram as an mp3 per chapter. | EN/UA | HolosTTS (UA), Kokoro-82M (EN), docling (PDF) | works |
 | 🎤 Karaoke | Makes karaoke videos from YouTube songs, with the words lighting up as they are sung, and sends them to Telegram or to your personal YouTube playlist. | EN/UA/RU | Mel-Band RoFormer, Whisper, MMS | works |
-| 🌐 Book translation | Translates EPUB and PDF books and sends the translated book to Telegram. | EN/RU → UA | Claude, pandoc | soon |
+| 🌐 Book translation | Translates EPUB and PDF books and sends the translated book to Telegram. | EN/RU → UA | Claude, spaCy, pymorphy3, pandoc | works |
 | 📝 YouTube summary | Retells a YouTube video in a few paragraphs and sends the summary to Telegram. | EN/UA/RU | — | soon |
 
 Voicing and karaoke models run locally on Apple Silicon; translation goes through Claude.
@@ -31,9 +31,11 @@ The bot then needs the words and the moment each one is sung. [Whisper large-v3-
 
 Finally the video is put together. If the singing starts right away, [librosa](https://github.com/librosa/librosa) finds the song's beat so the bot can add a short count-in. [Pillow](https://github.com/python-pillow/Pillow) measures the subtitle lines so they fit on screen, and [ffmpeg](https://ffmpeg.org) with libass burns them into the video. The bot sends the result to Telegram, or uploads it to your playlist through the [YouTube Data API](https://developers.google.com/youtube/v3).
 
-### 🌐 Book translation (soon)
+### 🌐 Book translation
 
-The book will be translated from the same Markdown the bot already makes for PDFs. [Claude](https://www.anthropic.com/claude), called through `claude -p`, will translate it, and [pandoc](https://pandoc.org) will build the translated EPUB from the result.
+The book is translated from the same Markdown the bot already makes for PDFs. First the bot collects the names worth keeping consistent: [spaCy](https://spacy.io) finds the named entities. [Claude](https://www.anthropic.com/claude), called through `claude -p`, turns them into a glossary in one call, with the Ukrainian title and author.
+
+Claude then translates the book part by part, getting with each part the glossary lines for the names in it. A Python script checks each translation without a model. It fixes the apostrophes, quotes and dialogue dashes, and it flags letters of another alphabet, lost paragraphs, glossary names in the wrong form, and calques from the LanguageTool and [chysto](https://github.com/vladichumachenko/chysto-ukr-skills) tables, which [pymorphy3](https://github.com/no-plagiarism/pymorphy3) extends to other forms of a phrase. A part with problems gets one fix call. [pandoc](https://pandoc.org) then builds the translated EPUB, and the book can be voiced right away.
 
 ## Ideas
 
@@ -104,3 +106,5 @@ Have a question, found a bug or have an idea? [Open an issue](https://github.com
 ## License
 
 [MIT](LICENSE) © Dmytro Vasyliev
+
+The [calque tables](src/features/translate/lang/uk/russianisms/) are vendored from [chysto-ukr-skills](https://github.com/vladichumachenko/chysto-ukr-skills) (MIT) and include LanguageTool data (LGPL 2.1); their licences are in that folder.

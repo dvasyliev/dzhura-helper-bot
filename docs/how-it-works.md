@@ -7,7 +7,7 @@
 | Feature | Status |
 |---|---|
 | 🎧 Create an audiobook | works |
-| 🌐 Translate a book | soon |
+| 🌐 Translate a book | works |
 | 🎤 Generate karaoke | works |
 | 📝 YouTube summary | soon |
 
@@ -40,6 +40,31 @@ data/audiobook/<author> - <title>/
 - **Re-voicing**: `/regen 5` or `/regen 5-7` re-voices chapters of the last book from `text/*.txt` (including manual edits and the book's dictionary). To prepare a chapter's text from the EPUB again, delete its `.txt`.
 
 Voices are in [voices.json](../src/features/audiobook/voices.json), grouped by language (`uk`, `en`). Each voice has `id`, `name` (the button and the audio folder, so names are unique across languages) and `provider` (`holos` or `kokoro`); every voice of the book's language is a button, in the file's order. Kokoro's language comes from the first letter of the voice id: `a` American, `b` British English.
+
+## How a book is translated
+
+The bot translates en and ru EPUB and PDF books into uk through Claude (`claude -p`, signed in on the Mac). A ru book cannot be voiced, so the bot offers to translate it; an English one gets a "🌐 Translate to Ukrainian" button next to the voices. Code: [src/features/translate/](../src/features/translate/); language data: [lang/](../src/features/translate/lang/).
+
+1. **Glossary candidates** ([glossary_candidates.py](../src/features/translate/scripts/glossary_candidates.py)): names seen at least twice, most frequent first. A language whose `lang/<code>/language.json` names a spaCy model (English: `en_core_web_sm`) uses its named entities; any other, capitalised words in mid-sentence. No ru-specific code or data.
+2. **Glossary**: one Claude call gives the Ukrainian title, author and the form of each name with its gender and declension (`glossary.json`).
+3. **Translation**: the book is cut into parts by paragraphs; each part goes to Claude with the last paragraph before it and the glossary lines of the names it has (English names match as whole words, names in other languages by their stem).
+4. **Check** ([chunk_check.py](../src/features/translate/scripts/chunk_check.py)), without a model: fixes the apostrophe (ʼ), quotes («») and dialogue dashes, then flags Latin words not in the source, ru letters, a lost or extra paragraph, a missing chapter title, glossary names in another form, and calques. A part with problems gets one fix call; the better of the two versions is kept, and what is left goes to `report.json`. If the checker itself fails, the part is saved unchecked and checked again next time; three failures in a row stop the translation.
+5. **Book**: the parts are joined into `book.uk.md`, pandoc builds the EPUB, the bot sends it and adds the book to the audiobook library with the voice buttons.
+
+```
+data/translate/<author> - <title>/
+  book.md                  ← the source as Markdown
+  glossary.json            ← names and their Ukrainian forms; edit and translate again to change them
+  chunks/0001.md, 0001.uk.md
+  report.json              ← parts whose problems were found, fixed or left
+  book.uk.md, book.uk.epub
+```
+
+- **Resuming**: a part is saved as soon as it is translated. If the translation stops (an error, the bot restarted), "🌐 Translate a book" in the menu lists the unfinished books, and the bot continues from the first part not done. At the Claude usage limit the bot says when it continues and waits.
+- **Setup**: `brew install pandoc` (without it the bot adds the book to the library but sends no EPUB); `uv sync` installs spaCy with `en_core_web_sm`, pymorphy3 and its Ukrainian dictionary.
+- **Calque tables**: [lang/uk/russianisms/](../src/features/translate/lang/uk/russianisms/) holds tables vendored from [chysto-ukr-skills](https://github.com/vladichumachenko/chysto-ukr-skills) (MIT), which include LanguageTool data (LGPL 2.1); their licences are in that folder. `allowed.txt` there lists the words the checker never flags.
+
+Python tests: `uv run pytest src/features/translate`.
 
 ## How karaoke is made
 

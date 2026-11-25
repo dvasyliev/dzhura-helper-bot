@@ -132,15 +132,22 @@ async function run(ctx: Context, chatId: number, folder: string, source: Book) {
           `Couldn't send the EPUB (it is ${epub}): ${message(error)}`,
         ),
       );
-  await notify(
-    ctx.api,
-    chatId,
-    `Fixed ${report.fixed} parts; ${report.problems} still have problems (see report.json).`,
-  );
+  await notify(ctx.api, chatId, reportText(report));
   const library = bookDir(name);
   await mkdir(library, { recursive: true });
   await copyFile(path.join(dir, "book.uk.md"), path.join(library, BOOK_MD));
   await offer(ctx, book, "uk");
+}
+
+/** The finish message: fixed parts, parts with problems left, and parts the checker failed on. */
+export function reportText(report: {
+  fixed: number;
+  problems: number;
+  unchecked: number;
+}): string {
+  const text = `Fixed ${report.fixed} parts; ${report.problems} still have problems (see report.json).`;
+  if (!report.unchecked) return text;
+  return `${text} ${report.unchecked} parts were not checked: the checker failed (see report.json). Translate the book again to check them; no part is translated twice.`;
 }
 
 /** The menu button: what to send, and the translations not finished yet. */

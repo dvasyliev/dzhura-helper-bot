@@ -17,6 +17,11 @@ export async function* runPython(
     child.on("error", reject);
     child.on("close", resolve);
   });
+  // A spawn error (uv missing) rejects before the loop below awaits `exited`: mark it handled now, so it does not
+  // crash the bot, and still throw it from the await at the end.
+  exited.catch(() => {});
+  // A script that exits before reading its input breaks the pipe; the exit code below reports that.
+  child.stdin.on("error", () => {});
   child.stdin.end(JSON.stringify(input));
   for await (const line of createInterface({ input: child.stdout })) {
     if (line.startsWith("{")) yield JSON.parse(line);

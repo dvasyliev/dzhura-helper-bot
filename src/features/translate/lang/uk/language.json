@@ -1,0 +1,17 @@
+{
+  "script": "Cyrillic",
+  "foreign_letters": "ыэъёЫЭЪЁ",
+  "apostrophe": "ʼ",
+  "apostrophe_variants": "'’",
+  "quotes": [
+    "«",
+    "»"
+  ],
+  "inner_quotes": [
+    "„",
+    "“"
+  ],
+  "dialogue_dash": "—",
+  "dialogue_dash_variants": "-–",
+  "term_match": "stem"
+}

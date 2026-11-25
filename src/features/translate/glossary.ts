@@ -1,66 +1,37 @@
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { runPython } from "../../python.ts";
 import { bookLanguage } from "../audiobook/text.ts";
 import type { Book } from "../book/epub.ts";
 import { runClaude } from "./claude.ts";
-import type { Term } from "./checks.ts";
+import { LANGUAGE, langFile } from "./lang.ts";
+import type { Term } from "./check.ts";
 
-const MAX_CANDIDATES = 300;
-const MIN_COUNT = 2;
-const MIN_TITLE_WORD = 3;
-const CONTEXT_CHARS = 60;
-const PROMPT = new URL("glossary-prompt.md", import.meta.url).pathname;
+const PROMPT = langFile(LANGUAGE, "glossary-prompt.md");
+const SCRIPT = fileURLToPath(
+  new URL("scripts/glossary_candidates.py", import.meta.url),
+);
 
-export type Candidate = { term: string; count: number; context: string };
+const CANDIDATE = z.object({
+  term: z.string(),
+  count: z.number().int(),
+  context: z.string(),
+});
+const REPLY = z.object({ candidates: z.array(CANDIDATE) });
+
+export type Candidate = z.infer<typeof CANDIDATE>;
 export type Glossary = { title: string; author?: string; terms: Term[] };
 
-const CAPITALISED = /\p{Lu}[\p{L}'’-]*/gu;
-const TITLES = /\b(?:Mr|Mrs|Ms|Dr|St|Sr|Jr|Prof|Capt|Col|Gen|Lt)\.\s*$/;
-
-/** Is the word at `index` the first word of a sentence (so its capital tells nothing)? */
-function startsSentence(text: string, index: number): boolean {
-  const before = text.slice(0, index);
-  if (!before.trim()) return true;
-  if (TITLES.test(before)) return false;
-  return /[.!?…]["”»)]*\s*$/.test(before) || /(^|\n)\s*["“«(]*$/.test(before);
-}
-
-/** Capitalised words that appear mid-sentence at least twice: likely names. Most frequent first, at most 300. */
-export function candidates(book: Book): Candidate[] {
-  const found = new Map<string, Candidate>();
-  const scan = (text: string, ignoreStart: boolean) => {
-    for (const match of text.matchAll(CAPITALISED)) {
-      if (!ignoreStart && startsSentence(text, match.index)) continue;
-      const term = match[0];
-      const known = found.get(term);
-      if (known) known.count += 1;
-      else {
-        const from = Math.max(0, match.index - CONTEXT_CHARS);
-        const context = text
-          .slice(from, match.index + term.length + CONTEXT_CHARS)
-          .replace(/\s+/g, " ")
-          .trim();
-        found.set(term, { term, count: 1, context });
-      }
-    }
-  };
-  scan(book.title, true);
-  for (const chapter of book.chapters) scan(chapter.text, false);
-  const titleWords = new Set(
-    (book.title.match(/\p{L}[\p{L}'’-]*/gu) ?? []).filter(
-      (w) => w.length > MIN_TITLE_WORD,
-    ),
-  );
-  for (const word of titleWords) {
-    if (!found.has(word))
-      found.set(word, { term: word, count: 0, context: book.title });
-  }
-  const byCount = (a: Candidate, b: Candidate) => b.count - a.count;
-  const all = [...found.values()];
-  const fromTitle = all.filter((c) => titleWords.has(c.term)).sort(byCount);
-  const others = all
-    .filter((c) => !titleWords.has(c.term) && c.count >= MIN_COUNT)
-    .sort(byCount);
-  return [...fromTitle, ...others].slice(0, MAX_CANDIDATES);
+/** Words of the book at `bookFile` (book.md) likely to need a glossary entry, from scripts/glossary_candidates.py. */
+export async function candidates(
+  bookFile: string,
+  language?: string,
+): Promise<Candidate[]> {
+  let found: Candidate[] | undefined;
+  for await (const reply of runPython(SCRIPT, { book: bookFile, language }))
+    found = REPLY.parse(reply).candidates;
+  if (!found) throw new Error("glossary_candidates.py printed no reply");
+  return found;
 }
 
 export const GLOSSARY = z.object({
@@ -92,19 +63,22 @@ function firstJsonObject(text: string): string {
   throw new Error("No JSON object in the glossary reply");
 }
 
-/** Asks Claude once for the Ukrainian forms of the book's title, author and recurring names. */
+/** Asks Claude once for the Ukrainian forms of the book's title, author and recurring names; `bookFile` is its book.md. */
 export async function buildGlossary(
   book: Book,
+  bookFile: string,
   run = runClaude,
+  find = candidates,
 ): Promise<Glossary> {
   const sample = book.chapters.map((c) => c.text).join("\n");
-  const lines = candidates(book).map(
+  const language = bookLanguage(sample);
+  const lines = (await find(bookFile, language)).map(
     (c) => `- ${c.term} (${c.count}): ${c.context}`,
   );
   const input = [
     `Title: ${book.title}`,
     `Author: ${book.author ?? "unknown"}`,
-    `Source language: ${bookLanguage(sample) ?? "unknown"}`,
+    `Source language: ${language ?? "unknown"}`,
     "Candidates:",
     ...lines,
   ].join("\n");

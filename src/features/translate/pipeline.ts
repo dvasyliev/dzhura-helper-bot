@@ -1,28 +1,34 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { bookLanguage } from "../audiobook/text.ts";
 import type { Book } from "../book/epub.ts";
 import { BOOK_MD, parseMarkdown, toMarkdown } from "../book/markdown.ts";
 import {
   checkChunk,
-  fixApostrophes,
   hasTerm,
-  loadTable,
+  PROBLEM,
+  type CheckInput,
+  type CheckResult,
   type Problem,
-  type Replacement,
   type Term,
-} from "./checks.ts";
-import { assemble, paragraphs, splitChunks } from "./chunks.ts";
+} from "./check.ts";
+import { assemble, paragraphs, splitChunks, type Chunk } from "./chunks.ts";
 import { LimitError, runClaude } from "./claude.ts";
-import { buildGlossary, GLOSSARY, type Glossary } from "./glossary.ts";
+import { LANGUAGE, langFile, termMatch, type TermMatch } from "./lang.ts";
+import {
+  buildGlossary,
+  candidates,
+  GLOSSARY,
+  type Glossary,
+} from "./glossary.ts";
 
 /** Per-book translation folders, named `<Author - Title>` after the source. */
 export const TRANSLATE_DIR = "data/translate";
 
-const PROMPT = fileURLToPath(new URL("prompt.md", import.meta.url));
-const FIX_PROMPT = fileURLToPath(new URL("fix-prompt.md", import.meta.url));
+const PROMPT = langFile(LANGUAGE, "prompt.md");
+const FIX_PROMPT = langFile(LANGUAGE, "fix-prompt.md");
 
 export type Progress = { done: number; total: number };
 
@@ -30,6 +36,8 @@ type Run = typeof runClaude;
 
 /** The shortest wait after a usage limit, so a reset time already past does not loop. */
 const MIN_LIMIT_WAIT_MS = 60_000;
+/** This many chunks in a row the checker fails on mean the Python side is broken: the translation stops. */
+const MAX_FAILED_CHECKS = 3;
 
 type Options = {
   dir: string;
@@ -38,22 +46,13 @@ type Options = {
   run?: Run;
   sleep?: (ms: number) => Promise<void>;
   pandoc?: (md: string, epub: string) => Promise<boolean>;
+  check?: (input: CheckInput) => Promise<CheckResult>;
+  candidates?: typeof candidates;
 };
 
 /** A chunk whose first translation had problems: what was found and what is left after the fix call. */
 type ReportEntry = { chunk: string; found: Problem[]; left: Problem[] };
 
-const PROBLEM = z.object({
-  kind: z.enum([
-    "latin",
-    "russian-letters",
-    "paragraphs",
-    "glossary",
-    "russianism",
-    "title",
-  ]),
-  detail: z.string(),
-});
 const REPORT = z.array(
   z.object({
     chunk: z.string(),
@@ -69,9 +68,13 @@ function sleepFor(ms: number): Promise<void> {
 /** Builds the EPUB with pandoc; false when pandoc is not installed. */
 function runPandoc(md: string, epub: string): Promise<boolean> {
   return new Promise((resolve, reject) => {
-    const child = spawn("pandoc", [md, "-o", epub, "--metadata", "lang=uk"], {
-      stdio: ["ignore", "ignore", "pipe"],
-    });
+    const child = spawn(
+      "pandoc",
+      [md, "-o", epub, "--metadata", `lang=${LANGUAGE}`],
+      {
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     child.on("error", (error: NodeJS.ErrnoException) => {
@@ -99,9 +102,9 @@ async function readIfExists(file: string): Promise<string | undefined> {
   }
 }
 
-/** Glossary terms whose source form occurs in `text` as a whole word. */
-function termsIn(text: string, terms: Term[]): Term[] {
-  return terms.filter((t) => hasTerm(text, t));
+/** Glossary terms whose source form occurs in `text` (see `hasTerm`). */
+function termsIn(text: string, terms: Term[], match: TermMatch): Term[] {
+  return terms.filter((t) => hasTerm(text, t, match));
 }
 
 function glossaryBlock(terms: Term[]): string[] {
@@ -149,9 +152,16 @@ export async function translateBook(
 ): Promise<{
   book: Book;
   epub?: string;
-  report: { fixed: number; problems: number };
+  report: { fixed: number; problems: number; unchecked: number };
 }> {
-  const { dir, run = runClaude, sleep = sleepFor, pandoc = runPandoc } = opts;
+  const {
+    dir,
+    run = runClaude,
+    sleep = sleepFor,
+    pandoc = runPandoc,
+    check = checkChunk,
+    candidates: findCandidates = candidates,
+  } = opts;
 
   /** A usage limit waits for its reset and retries; any other failure gets one retry. */
   const call: Run = async (prompt, input) => {
@@ -171,6 +181,22 @@ export async function translateBook(
     }
   };
 
+  /**
+   * The checker, retried once. When it fails twice the translation is kept unchecked, with a `check-failed`
+   * problem, so a paid translation is never thrown away and the book goes on.
+   */
+  const checkOrKeep = async (input: CheckInput): Promise<CheckResult> => {
+    try {
+      return await check(input).catch(() => check(input));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return {
+        translation: input.translation,
+        problems: [{ kind: "check-failed", detail }],
+      };
+    }
+  };
+
   await mkdir(join(dir, "chunks"), { recursive: true });
   await writeFile(join(dir, BOOK_MD), toMarkdown(source));
 
@@ -179,7 +205,12 @@ export async function translateBook(
   let glossary: Glossary;
   if (saved) glossary = GLOSSARY.parse(JSON.parse(saved));
   else {
-    glossary = await buildGlossary(source, call);
+    glossary = await buildGlossary(
+      source,
+      join(dir, BOOK_MD),
+      call,
+      findCandidates,
+    );
     await writeFile(glossaryFile, JSON.stringify(glossary, null, 2));
   }
 
@@ -189,52 +220,82 @@ export async function translateBook(
     ? REPORT.parse(JSON.parse(savedReport))
     : [];
 
-  const table: Replacement[] = loadTable();
+  const unchecked = (entry?: ReportEntry) =>
+    !!entry?.left.some((p) => p.kind === "check-failed");
+
+  /** Checks a translation and, when problems remain, asks for one fix; records the chunk in report.json. */
+  const checkAndFix = async (
+    name: string,
+    chunk: Chunk,
+    terms: Term[],
+    raw: string,
+  ): Promise<{ translation: string; failed: boolean }> => {
+    const input = {
+      source: chunk.text,
+      terms,
+      first: chunk.first,
+      language: LANGUAGE,
+    };
+    const checked = await checkOrKeep({ ...input, translation: raw });
+    let translation = checked.translation;
+    const found = checked.problems;
+    const failed = found.some((p) => p.kind === "check-failed");
+    let left = found;
+    if (found.length && !failed) {
+      const fixed = await checkOrKeep({
+        ...input,
+        translation: (
+          await call(
+            FIX_PROMPT,
+            fixInput(chunk.text, translation, found, terms),
+          )
+        ).trim(),
+      });
+      const fixFailed = fixed.problems.some((p) => p.kind === "check-failed");
+      if (!fixFailed && fixed.problems.length < found.length) {
+        translation = fixed.translation;
+        left = fixed.problems;
+      }
+    }
+    report = report.filter((r) => r.chunk !== name);
+    if (found.length) report.push({ chunk: name, found, left });
+    await writeFile(reportFile, JSON.stringify(report, null, 2));
+    return { translation, failed };
+  };
+
+  const match = await termMatch(
+    bookLanguage(source.chapters.map((c) => c.text).join("\n")),
+  );
   const chunks = splitChunks(source);
   const translated: string[] = [];
+  let failedInRow = 0;
   for (const [index, chunk] of chunks.entries()) {
     const name = String(index + 1).padStart(4, "0");
     const chunkFile = join(dir, "chunks", `${name}.md`);
     const ukFile = join(dir, "chunks", `${name}.uk.md`);
     await writeFile(chunkFile, chunk.text);
     const done = await readIfExists(ukFile);
-    if (done !== undefined) {
+    const recheck = unchecked(report.find((r) => r.chunk === name));
+    if (done !== undefined && !recheck) {
       translated.push(done);
       continue;
     }
 
-    const terms = termsIn(chunk.text, glossary.terms);
+    const terms = termsIn(chunk.text, glossary.terms, match);
     const context = paragraphs(translated.at(-1) ?? "").at(-1);
-    let translation = fixApostrophes(
-      (await call(PROMPT, translateInput(chunk.text, terms, context))).trim(),
-    );
-    const found = checkChunk(
-      chunk.text,
-      translation,
-      terms,
-      table,
-      chunk.first,
-    );
-    if (found.length) {
-      const fixed = fixApostrophes(
-        (
-          await call(
-            FIX_PROMPT,
-            fixInput(chunk.text, translation, found, terms),
-          )
-        ).trim(),
-      );
-      const left = checkChunk(chunk.text, fixed, terms, table, chunk.first);
-      const better = left.length < found.length;
-      if (better) translation = fixed;
-      report = [
-        ...report.filter((r) => r.chunk !== name),
-        { chunk: name, found, left: better ? left : found },
-      ];
-      await writeFile(reportFile, JSON.stringify(report, null, 2));
-    }
+    const raw =
+      done ??
+      (await call(PROMPT, translateInput(chunk.text, terms, context))).trim();
+    const { translation, failed } = await checkAndFix(name, chunk, terms, raw);
     await writeFile(ukFile, translation);
     translated.push(translation);
+    failedInRow = failed ? failedInRow + 1 : 0;
+    if (failedInRow >= MAX_FAILED_CHECKS) {
+      const detail = report.find((r) => r.chunk === name)?.left[0]?.detail;
+      throw new Error(
+        `The chunk checker failed on ${MAX_FAILED_CHECKS} parts in a row (${detail}); the Python side looks broken. The parts are saved and get checked when the translation continues`,
+      );
+    }
     await opts.onProgress({ done: index + 1, total: chunks.length });
   }
   await writeFile(reportFile, JSON.stringify(report, null, 2));
@@ -250,7 +311,8 @@ export async function translateBook(
     epub,
     report: {
       fixed: report.filter((r) => !r.left.length).length,
-      problems: report.filter((r) => r.left.length).length,
+      problems: report.filter((r) => r.left.length && !unchecked(r)).length,
+      unchecked: report.filter(unchecked).length,
     },
   };
 }

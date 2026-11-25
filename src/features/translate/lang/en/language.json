@@ -1,0 +1,4 @@
+{
+  "ner_model": "en_core_web_sm",
+  "term_match": "whole"
+}

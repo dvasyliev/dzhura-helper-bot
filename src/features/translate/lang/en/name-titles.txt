@@ -1,0 +1,14 @@
+# Abbreviations written before a name (Mr. Fogg): a capital word after them is not a sentence start,
+# and they are not part of the name. One per line, without the dot.
+Mr
+Mrs
+Ms
+Dr
+St
+Sr
+Jr
+Prof
+Capt
+Col
+Gen
+Lt

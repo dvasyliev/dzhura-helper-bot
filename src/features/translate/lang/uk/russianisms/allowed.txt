@@ -1,0 +1,66 @@
+# Words and phrases from lt-replace.tsv and chysto-calques.tsv that are correct Ukrainian on their own:
+# the checker never flags them. One per line; a comment above each group gives the reason.
+
+# Correct words; their lt-replace rows are wrong only in phrases the table does not name.
+прийом
+прийняв
+прийняли
+прийнято
+прийнятий
+розбили
+схоже
+
+# Correct verb forms; the wrong uses (приймати участь, приймати рішення) have their own phrase rows.
+приймати
+приймав
+прийматиме
+приймаючи
+приймали
+прийняте
+
+# Set phrases that are correct Ukrainian (in СУМ-11 or common in literary prose).
+між тим
+а між тим
+так от
+більше того
+більш того
+а раптом
+будьте добрі
+один на один
+розбили табір
+рукою подати
+
+# A phrase too general to flag: "на голову вище", "впав на голову".
+на голову
+
+# Other words of these forms are correct: "зі сходу" (from the east), "на відміну від", "любого друга", "глупої ночі".
+сходу
+відміну
+любого
+глупа
+
+# Correct words in СУМ-11 without a mark; the table only prefers a synonym.
+туземець
+туземний
+необхідності
+благополучно
+благоговійно
+поліцейський
+рокіт
+перевели
+переводили
+коливань
+кузена
+перила
+обитель
+витоки
+падаль
+заживо
+упівголоса
+супротив
+місцезнаходження
+пригодитися
+нагло
+
+# A nautical term: the shrouds of a ship.
+вантів

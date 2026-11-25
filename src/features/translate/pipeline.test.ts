@@ -1,8 +1,9 @@
-import { mkdtemp, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Book } from "../book/epub.ts";
+import type { CheckInput, Problem } from "./check.ts";
 import { paragraphs } from "./chunks.ts";
 import { LimitError } from "./claude.ts";
 import { translateBook } from "./pipeline.ts";
@@ -30,6 +31,18 @@ function translate(text: string, drop = false): string {
   );
   if (drop) result.pop();
   return result.join("\n\n");
+}
+
+/** A fake checker: paragraph count, title line and the word "Zzz"; it fixes ' to ʼ. */
+async function fakeCheck({ source, translation, first }: CheckInput) {
+  const problems: Problem[] = [];
+  if (paragraphs(source).length !== paragraphs(translation).length)
+    problems.push({ kind: "paragraphs", detail: "" });
+  if (first && !translation.startsWith("# "))
+    problems.push({ kind: "title", detail: "" });
+  if (translation.includes("Zzz"))
+    problems.push({ kind: "latin", detail: "Zzz" });
+  return { translation: translation.replaceAll("'", "ʼ"), problems };
 }
 
 type Call = { prompt: string; input: string };
@@ -69,6 +82,8 @@ async function setup() {
       sleeps.push(ms);
     },
     pandoc: async () => true,
+    check: fakeCheck,
+    candidates: async () => [],
   };
   return { dir, opts, progress, limits, sleeps };
 }
@@ -83,7 +98,7 @@ describe("translateBook", () => {
     expect(result.book.title).toBe("Два розділи");
     expect(result.book.author).toBe("Якийсь Автор");
     expect(result.book.chapters).toHaveLength(2);
-    expect(result.report).toEqual({ fixed: 0, problems: 0 });
+    expect(result.report).toEqual({ fixed: 0, problems: 0, unchecked: 0 });
     expect(result.epub).toBe(join(dir, "book.uk.epub"));
     expect(progress.at(-1)).toEqual({ done: 2, total: 2 });
     const files = await readdir(join(dir, "chunks"));
@@ -108,7 +123,7 @@ describe("translateBook", () => {
     const { opts } = await setup();
     const { run, calls } = fakeRun((s) => translate(s, isFirstChunk(s)));
     const result = await translateBook(book, { ...opts, run });
-    expect(result.report).toEqual({ fixed: 1, problems: 0 });
+    expect(result.report).toEqual({ fixed: 1, problems: 0, unchecked: 0 });
     const fix = calls.find((c) => c.prompt === "fix-prompt.md");
     expect(tagged(fix?.input ?? "", "problems")).toContain("paragraphs");
   });
@@ -121,12 +136,126 @@ describe("translateBook", () => {
       broken,
     );
     const result = await translateBook(book, { ...opts, run });
-    expect(result.report).toEqual({ fixed: 0, problems: 1 });
+    expect(result.report).toEqual({ fixed: 0, problems: 1, unchecked: 0 });
     expect(result.book.chapters).toHaveLength(2);
     const report = JSON.parse(
       await readFile(join(dir, "report.json"), "utf8"),
     ) as { chunk: string }[];
     expect(report.map((r) => r.chunk)).toEqual(["0001"]);
+  });
+
+  it("retries a failed check once", async () => {
+    const { opts } = await setup();
+    const { run, calls } = fakeRun();
+    let checks = 0;
+    const check = async (input: CheckInput) => {
+      checks += 1;
+      if (checks === 1) throw new Error("checker crashed");
+      return fakeCheck(input);
+    };
+    const result = await translateBook(book, { ...opts, run, check });
+    expect(result.report).toEqual({ fixed: 0, problems: 0, unchecked: 0 });
+    expect(calls.filter((c) => c.prompt === "prompt.md")).toHaveLength(2);
+  });
+
+  it("keeps a translation the checker fails on twice and goes on", async () => {
+    const { dir, opts } = await setup();
+    const { run, calls } = fakeRun();
+    const check = async (input: CheckInput) => {
+      if (isFirstChunk(input.source)) throw new Error("checker crashed");
+      return fakeCheck(input);
+    };
+    const result = await translateBook(book, { ...opts, run, check });
+    expect(result.book.chapters).toHaveLength(2);
+    expect(result.report).toEqual({ fixed: 0, problems: 0, unchecked: 1 });
+    expect(calls.map((c) => c.prompt)).not.toContain("fix-prompt.md");
+    const saved = await readFile(join(dir, "chunks", "0001.uk.md"), "utf8");
+    expect(saved).toMatch(/^# Розділ/);
+    const report = JSON.parse(
+      await readFile(join(dir, "report.json"), "utf8"),
+    ) as { chunk: string; left: Problem[] }[];
+    expect(report).toEqual([
+      {
+        chunk: "0001",
+        found: [{ kind: "check-failed", detail: "checker crashed" }],
+        left: [{ kind: "check-failed", detail: "checker crashed" }],
+      },
+    ]);
+  });
+
+  it("checks again on resume a chunk the checker failed on", async () => {
+    const { dir, opts } = await setup();
+    const crash = async (input: CheckInput) => {
+      if (isFirstChunk(input.source)) throw new Error("checker crashed");
+      return fakeCheck(input);
+    };
+    await translateBook(book, { ...opts, run: fakeRun().run, check: crash });
+
+    const { run, calls } = fakeRun();
+    const checked: string[] = [];
+    const check = async (input: CheckInput) => {
+      checked.push(input.source);
+      return { ...(await fakeCheck(input)), translation: "# Перевірено" };
+    };
+    const result = await translateBook(book, { ...opts, run, check });
+    expect(calls).toEqual([]);
+    expect(checked).toHaveLength(1);
+    expect(isFirstChunk(checked[0] ?? "")).toBe(true);
+    expect(result.report).toEqual({ fixed: 0, problems: 0, unchecked: 0 });
+    expect(await readFile(join(dir, "chunks", "0001.uk.md"), "utf8")).toBe(
+      "# Перевірено",
+    );
+    expect(
+      JSON.parse(await readFile(join(dir, "report.json"), "utf8")),
+    ).toEqual([]);
+  });
+
+  it("stops when the checker fails on three chunks in a row", async () => {
+    const { dir, opts } = await setup();
+    const long: Book = {
+      title: "Four",
+      chapters: ["One", "Two", "Three", "Four"].map((title) => ({
+        title,
+        text: `${title} text.`,
+      })),
+    };
+    const check = async () => {
+      throw new Error("no module named pymorphy3");
+    };
+    await expect(
+      translateBook(long, { ...opts, run: fakeRun().run, check }),
+    ).rejects.toThrow(/3 parts in a row.*no module named pymorphy3/);
+    const saved = await readdir(join(dir, "chunks"));
+    expect(saved.filter((f) => f.endsWith(".uk.md"))).toEqual([
+      "0001.uk.md",
+      "0002.uk.md",
+      "0003.uk.md",
+    ]);
+  });
+
+  it("sends a glossary term only for a chunk with its whole English word", async () => {
+    const { dir, opts } = await setup();
+    await writeFile(
+      join(dir, "glossary.json"),
+      JSON.stringify({
+        title: "Два",
+        terms: [{ source: "Brazil", uk: "Бразилія" }],
+      }),
+    );
+    const english: Book = {
+      title: "Two",
+      chapters: [
+        { title: "One", text: "He went to Brazil with the man and his son." },
+        { title: "Two", text: "The Brazilian was in the house of the man." },
+      ],
+    };
+    const { run, calls } = fakeRun();
+    await translateBook(english, { ...opts, run });
+    const inputs = calls.filter((c) => c.prompt === "prompt.md");
+    expect(inputs.map((c) => c.input.includes("Brazil: Бразилія"))).toEqual([
+      true,
+      false,
+    ]);
   });
 
   it("retries a failed call once", async () => {
@@ -187,17 +316,24 @@ describe("translateBook", () => {
       isFirstChunk(s) ? translate(s).replace("# ", "") : translate(s),
     );
     const result = await translateBook(book, { ...opts, run });
-    expect(result.report).toEqual({ fixed: 1, problems: 0 });
+    expect(result.report).toEqual({ fixed: 1, problems: 0, unchecked: 0 });
     const fix = calls.find((c) => c.prompt === "fix-prompt.md");
     expect(tagged(fix?.input ?? "", "problems")).toContain("title");
   });
 
-  it("saves chunks with the Ukrainian apostrophe", async () => {
+  it("saves the checker's text and calls the fix only for a chunk with problems", async () => {
     const { dir, opts } = await setup();
-    const { run } = fakeRun((s) => translate(s).replace("Абзац", "П'ять"));
+    const apostrophe = (s: string) => translate(s).replace("Абзац", "П'ять");
+    const { run, calls } = fakeRun(
+      (s) => (isFirstChunk(s) ? translate(s, true) : apostrophe(s)),
+      apostrophe,
+    );
     await translateBook(book, { ...opts, run });
-    const chunk = await readFile(join(dir, "chunks", "0001.uk.md"), "utf8");
-    expect(chunk).toContain("Пʼять");
+    for (const name of ["0001.uk.md", "0002.uk.md"])
+      expect(await readFile(join(dir, "chunks", name), "utf8")).toContain(
+        "Пʼять",
+      );
+    expect(calls.filter((c) => c.prompt === "fix-prompt.md")).toHaveLength(1);
   });
 
   it("returns the book without an EPUB when pandoc is missing", async () => {
