@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 (2026-11-25)
+
+### Features
+
+- translate books from Telegram with Claude and a glossary (0d1a91f)
+
 ## 0.1.0 (2026-11-25)
 
 ### Features
