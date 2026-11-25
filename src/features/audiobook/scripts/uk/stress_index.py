@@ -1,6 +1,6 @@
 """Builds the stress index used by prepare.py: every stressed word form of Ukrainian Wiktionary
 (kaikki.org extract, CC BY-SA) and the lang-uk list of homographs (words with several stresses).
-Run once: uv run python src/features/audiobook/scripts/stress_index.py (downloads ~320 MB, keeps ~18 MB)."""
+Run once: uv run python src/features/audiobook/scripts/uk/stress_index.py (downloads ~320 MB, keeps ~18 MB)."""
 
 import csv
 import io

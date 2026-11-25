@@ -15,49 +15,47 @@ import {
 import { youtube } from "./youtube.ts";
 
 const STEPS = {
-  download: "Скачую кліп",
-  separate: "Відділяю голос",
-  listen: "Розпізнаю спів",
-  lyrics: "Шукаю текст",
-  align: "Підганяю слова під спів",
-  render: "Збираю відео",
-  upload: "Заливаю на YouTube",
+  download: "Downloading the clip",
+  separate: "Separating the vocals",
+  listen: "Recognising the singing",
+  lyrics: "Looking for the lyrics",
+  align: "Fitting the words to the singing",
+  render: "Building the video",
+  upload: "Uploading to YouTube",
 } satisfies Record<
   Extract<KaraokeEvent, { step: string }>["step"] | "upload",
   string
 >;
-/** Telegram shows «записує відео…» at the top of the chat for 5 s after each chat action. */
+/** Telegram shows «sending video…» at the top of the chat for 5 s after each chat action. */
 const ACTION_EVERY_MS = 4000;
 const NO_LYRICS = {
-  not_found: "Не знайшов текст цієї пісні.",
-  mismatch: "Знайдений текст не збігається зі співом.",
+  not_found: "Couldn't find the lyrics of this song.",
+  mismatch: "The lyrics found don't match the singing.",
 };
 /** Telegram splits a long paste into several messages sent one right after another; they are joined. */
 const PASTE_WAIT_MS = 1500;
 /** Telegram's message limit is 4096 characters; a longer transcript goes as a file. */
 const MAX_MESSAGE_CHARS = 4000;
 const ANOTHER_SONG =
-  "Ця кнопка від попередньої пісні. Надішліть посилання ще раз.";
-/** The owner's link-only karaoke playlist. */
-const PLAYLIST = "PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+  "This button is from an earlier song. Send the link again.";
 const channel =
-  config.googleClientId && config.googleClientSecret
+  config.googleClientId && config.googleClientSecret && config.youtubePlaylistId
     ? youtube({
         clientId: config.googleClientId,
         clientSecret: config.googleClientSecret,
-        playlistId: PLAYLIST,
+        playlistId: config.youtubePlaylistId,
         storeFile: "data/youtube.json",
       })
     : undefined;
 
-/** «⏳ 3/7 · Слухаю…»; without YouTube there is no upload step. */
+/** «⏳ 3/7 · Recognising the singing…»; without YouTube there is no upload step. */
 function stepText(step: keyof typeof STEPS): string {
   const steps = Object.keys(STEPS).filter((s) => channel || s !== "upload");
   return `⏳ ${steps.indexOf(step) + 1}/${steps.length} · ${STEPS[step]}…`;
 }
 
 type Clip = { url: string; id: string };
-/** The link waiting for «лише музика чи з голосом». */
+/** The link waiting for «music only or with vocals». */
 let pending: Clip | undefined;
 /** The last job, re-run with the owner's or the recognized lyrics. */
 let last: (Clip & { versions: Version[] }) | undefined;
@@ -74,11 +72,11 @@ composer.on("message:text", async (ctx, next) => {
   if (id) {
     pending = { url: `https://www.youtube.com/watch?v=${id}`, id };
     const keyboard = new InlineKeyboard()
-      .text("🎵 Караоке", "karaoke:music")
-      .text("🎤 Вокал", "karaoke:vocals")
-      .text("🎵🎤 Обидва", "karaoke:both");
+      .text("🎵 Karaoke", "karaoke:music")
+      .text("🎤 Vocals", "karaoke:vocals")
+      .text("🎵🎤 Both", "karaoke:both");
     return ctx.reply(
-      `Яку версію зробити? ${estimate({ separated: isSeparated(id), youtube: !!channel })}`,
+      `Which version? ${estimate({ separated: isSeparated(id), youtube: !!channel })}`,
       { reply_markup: keyboard },
     );
   }
@@ -102,7 +100,7 @@ const VERSIONS: Record<string, Version[]> = {
 };
 
 composer.callbackQuery(/^karaoke:(music|vocals|both)$/, async (ctx) => {
-  if (!pending) return ctx.answerCallbackQuery("Надішліть посилання ще раз.");
+  if (!pending) return ctx.answerCallbackQuery("Send the link again.");
   await start(ctx, { ...pending, versions: VERSIONS[ctx.match[1]] });
 });
 
@@ -110,7 +108,7 @@ composer.callbackQuery(/^karaoke:mytext:(.+)$/, async (ctx) => {
   if (last?.id !== ctx.match[1]) return ctx.answerCallbackQuery(ANOTHER_SONG);
   await ctx.answerCallbackQuery();
   await ctx.editMessageReplyMarkup().catch(() => {});
-  await ctx.reply("Надішліть текст пісні, кожен рядок з нового рядка.");
+  await ctx.reply("Send the lyrics, each line on a new line.");
 });
 
 composer.callbackQuery(/^karaoke:transcript:(.+)$/, async (ctx) => {
@@ -118,18 +116,19 @@ composer.callbackQuery(/^karaoke:transcript:(.+)$/, async (ctx) => {
     return ctx.answerCallbackQuery(ANOTHER_SONG);
   const text = heard;
   if (!(await start(ctx, { ...last, useTranscript: true }))) return;
-  const intro = "Розпізнаний текст. Виправте й надішліть — перероблю.";
+  const intro =
+    "The recognised lyrics. Fix them and send them back, and I'll redo the video.";
   if (text.length <= MAX_MESSAGE_CHARS) return ctx.reply(`${intro}\n\n${text}`);
   await ctx.replyWithDocument(
-    new InputFile(Buffer.from(text), "розпізнаний текст.txt"),
+    new InputFile(Buffer.from(text), "transcript.txt"),
     { caption: intro },
   );
 });
 
 export const karaoke: Feature = {
   id: "karaoke",
-  title: "🎤 Згенерувати караоке",
-  hint: "Надішліть посилання на YouTube-кліп — зроблю з нього караоке.",
+  title: "🎤 Generate karaoke",
+  hint: "Send a YouTube clip link and I'll make a karaoke video of it.",
   composer,
 };
 
@@ -151,10 +150,10 @@ async function start(ctx: Context, job: KaraokeJob): Promise<boolean> {
   };
   const stopped = (error: unknown) =>
     ctx.api
-      .sendMessage(chatId, `Караоке не вийшло: ${friendly(error)}`)
+      .sendMessage(chatId, `Karaoke failed: ${friendly(error)}`)
       .then(() => {}, console.error);
-  if (!startJob("караоке", work, stopped)) {
-    const busy = `Зачекайте, зараз триває ${busyWith()}.`;
+  if (!startJob("karaoke", work, stopped)) {
+    const busy = `Please wait, ${busyWith()} is in progress.`;
     await (ctx.callbackQuery ? ctx.answerCallbackQuery(busy) : ctx.reply(busy));
     return false;
   }
@@ -182,8 +181,8 @@ async function follow(
     } else if ("needLyrics" in event) {
       heard = event.transcript;
       const keyboard = new InlineKeyboard()
-        .text("✍️ Надішлю текст сам", `karaoke:mytext:${job.id}`)
-        .text("🤖 Зробити з розпізнаного", `karaoke:transcript:${job.id}`);
+        .text("✍️ I'll send the lyrics", `karaoke:mytext:${job.id}`)
+        .text("🤖 Use the recognised lyrics", `karaoke:transcript:${job.id}`);
       await ctx.api.sendMessage(chatId, NO_LYRICS[event.needLyrics], {
         reply_markup: keyboard,
       });
@@ -201,19 +200,19 @@ async function follow(
           {
             file: event.full,
             title: name,
-            description: `Оригінал: ${job.url}`,
+            description: `Original: ${job.url}`,
           },
           (url, code) => askLogin(ctx, chatId, url, code),
         );
         await ctx.api.sendMessage(
           chatId,
-          `<b>${escapeHtml(name)}</b>\n${url}${inPlaylist ? "" : "\n(у плейлист не додалось)"}`,
+          `<b>${escapeHtml(name)}</b>\n${url}${inPlaylist ? "" : "\n(not added to the playlist)"}`,
           { parse_mode: "HTML" },
         );
       } catch (error) {
         await ctx.api.sendMessage(
           chatId,
-          `Не залив на YouTube: ${friendly(error)}`,
+          `Didn't upload to YouTube: ${friendly(error)}`,
         );
         await sendVideo(ctx, chatId, event);
       }
@@ -230,8 +229,8 @@ async function askLogin(
 ) {
   await ctx.api.sendMessage(
     chatId,
-    `Щоб залити на YouTube, увійдіть: відкрийте ${url}, введіть код з наступного повідомлення й оберіть акаунт з каналом. ` +
-      "Якщо Google попередить, що застосунок не перевірений, натисніть «Продовжити». Після входу заливка продовжиться сама.",
+    `To upload to YouTube, sign in: open ${url}, enter the code from the next message and pick the account with the channel. ` +
+      "If Google warns that the app isn't verified, press «Continue». After you sign in, the upload continues by itself.",
   );
   await ctx.api.sendMessage(chatId, `<code>${escapeHtml(code)}</code>`, {
     parse_mode: "HTML",
@@ -260,7 +259,7 @@ async function sendVideo(
   } catch (error) {
     await ctx.api.sendMessage(
       chatId,
-      `Не вдалося надіслати відео (${friendly(error)}). Файл: ${video}`,
+      `Couldn't send the video (${friendly(error)}). File: ${video}`,
     );
   }
 }

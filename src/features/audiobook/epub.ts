@@ -19,12 +19,12 @@ const BLOCK_END =
 /** `fileName` names the book when the EPUB has no title. */
 export async function parseEpub(
   data: Buffer,
-  fileName = "Книжка",
+  fileName = "Book",
 ): Promise<Book> {
   const zip = await JSZip.loadAsync(data);
   const read = async (file: string) => {
     const entry = zip.file(file);
-    if (!entry) throw new Error(`У EPUB немає файлу ${file}`);
+    if (!entry) throw new Error(`The EPUB has no file ${file}`);
     return entry.async("string");
   };
 
@@ -33,7 +33,7 @@ export async function parseEpub(
     container.match(/<rootfile\b[^>]*>/i)?.[0] ?? "",
     "full-path",
   );
-  if (!opfPath) throw new Error("Не знайдено опис книжки (OPF)");
+  if (!opfPath) throw new Error("Book description (OPF) not found");
   const opf = await read(opfPath);
   const opfDir = path.dirname(opfPath);
 

@@ -5,7 +5,7 @@ import {
   duration,
   findBooks,
   forecast,
-  isUkrainian,
+  bookLanguage,
   parseNumbers,
   safeFilename,
 } from "./text.ts";
@@ -51,28 +51,42 @@ describe("findBooks", () => {
   });
 });
 
-describe("isUkrainian", () => {
-  it("tells Ukrainian from Russian and English", () => {
-    expect(isUkrainian("Він відкрив двері й побачив її.")).toBe(true);
-    expect(isUkrainian("Он открыл дверь и увидел её.")).toBe(false);
-    expect(isUkrainian("He opened the door and saw her.")).toBe(false);
+describe("bookLanguage", () => {
+  it("finds Ukrainian and English", () => {
+    expect(bookLanguage("Він відкрив двері й побачив її.")).toBe("uk");
+    expect(
+      bookLanguage(
+        "He opened the door and saw that she was in the room with a letter.",
+      ),
+    ).toBe("en");
+  });
+
+  it("refuses other languages", () => {
+    expect(bookLanguage("Он открыл дверь и увидел её.")).toBeUndefined();
+    expect(
+      bookLanguage("Il ouvrit la porte et vit qu'elle était dans la chambre."),
+    ).toBeUndefined();
+    expect(
+      bookLanguage("Er öffnete die Tür und sah, dass sie im Zimmer war."),
+    ).toBeUndefined();
+    expect(bookLanguage("")).toBeUndefined();
   });
 });
 
 describe("forecast", () => {
   it("estimates audio length, size and voicing time from the text length", () => {
-    expect(forecast([7_000, 70_000], true)).toBe(
-      "≈1 год 50 хв аудіо, ≈53 МБ (найбільший розділ ≈48 МБ).\nПерший розділ буде за ≈1 хв, уся озвучка займе ≈5 хв.",
+    expect(forecast([7_000, 70_000], "holos")).toBe(
+      "≈1 h 50 min of audio, ≈53 MB (largest chapter ≈48 MB).\nThe first chapter will be ready in ≈1 min, the whole voicing takes ≈5 min.",
     );
-    expect(forecast([700], false)).toBe(
-      "≈1 хв аудіо, ≈1 МБ (найбільший розділ ≈1 МБ).",
+    expect(forecast([8_500, 85_000], "kokoro")).toBe(
+      "≈1 h 50 min of audio, ≈53 MB (largest chapter ≈48 MB).\nThe first chapter will be ready in ≈1 min, the whole voicing takes ≈11 min.",
     );
   });
 
   it("formats durations", () => {
-    expect(duration(0.2)).toBe("1 хв");
-    expect(duration(60)).toBe("1 год");
-    expect(duration(75)).toBe("1 год 15 хв");
+    expect(duration(0.2)).toBe("1 min");
+    expect(duration(60)).toBe("1 h");
+    expect(duration(75)).toBe("1 h 15 min");
   });
 });
 

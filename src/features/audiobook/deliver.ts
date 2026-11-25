@@ -1,9 +1,9 @@
 import { InputFile, type Api } from "grammy";
 import path from "node:path";
 import type { Book } from "./epub.ts";
-import type { Chapter, Voice } from "./library.ts";
+import type { Chapter } from "./library.ts";
 import { bookName, bookPaths } from "./text.ts";
-import { voiceChapters } from "./voice.ts";
+import { voiceChapters, type Voice } from "./voice.ts";
 
 /** Voices `todo` and sends each chapter's files in reading order; a failed chapter stops the book. */
 export async function voiceBook(
@@ -16,9 +16,9 @@ export async function voiceBook(
 ) {
   const paths = bookPaths(bookName(book), voice.name);
   const job = {
-    voiceId: voice.id,
+    voice,
     ...paths,
-    report: withReport ? paths.report : undefined,
+    report: withReport && voice.language === "uk" ? paths.report : undefined,
     chapters: todo,
   };
   for await (const event of voiceChapters(job)) {
@@ -35,7 +35,7 @@ export async function voiceBook(
     }
     const chapter = todo.find((c) => c.index === event.chapter)!;
     if (event.error)
-      throw new Error(`розділ «${chapter.name}»: ${event.error}`);
+      throw new Error(`chapter «${chapter.name}»: ${event.error}`);
     for (const file of event.files ?? []) {
       const name = path.basename(file, ".mp3");
       try {
@@ -47,7 +47,7 @@ export async function voiceBook(
         await notify(
           api,
           chatId,
-          `Не вдалося надіслати «${name}» (файл є в ${paths.audioDir}): ${message(error)}`,
+          `Couldn't send «${name}» (the file is in ${paths.audioDir}): ${message(error)}`,
         );
       }
     }
@@ -63,7 +63,7 @@ async function sendReport(
 ): Promise<void> {
   try {
     await api.sendDocument(chatId, new InputFile(file), {
-      caption: `Слів, де варто перевірити наголос: ${words} (імена, невідомі слова, омографи). Неправильні допишіть у ${dictionary} — наступні розділи вже їх врахують, а готові: /regen <номер>.`,
+      caption: `Words whose stress is worth checking: ${words} (names, unknown words, homographs). Add the wrong ones to ${dictionary}: the next chapters will use it, and for finished ones run /regen <number>.`,
     });
   } catch (error) {
     console.error("sendDocument failed:", error);

@@ -13,7 +13,7 @@ export function createBot(): Bot {
   // The «Menu» button next to the input field lists these commands.
   void bot.api
     .setMyCommands([
-      { command: "menu", description: "Що вміє бот" },
+      { command: "menu", description: "What the bot can do" },
       ...FEATURES.flatMap((f) => [
         { command: f.id, description: label(f) },
         ...(f.commands ?? []),
@@ -22,7 +22,7 @@ export function createBot(): Bot {
     .catch((error) => console.error("setMyCommands failed:", error));
 
   bot.command(["start", "menu"], (ctx) =>
-    ctx.reply("Що зробимо?", { reply_markup: menu() }),
+    ctx.reply("What shall we do?", { reply_markup: menu() }),
   );
   for (const feature of FEATURES)
     bot.command(feature.id, (ctx) => open(ctx, feature));
@@ -40,7 +40,7 @@ export function createBot(): Bot {
 
   // Nothing above took the message.
   bot.on("message", (ctx) =>
-    ctx.reply("Не знаю, що з цим робити. Оберіть дію:", {
+    ctx.reply("I don't know what to do with this. Pick an action:", {
       reply_markup: menu(),
     }),
   );
@@ -49,7 +49,7 @@ export function createBot(): Bot {
   return bot;
 }
 
-const NOT_READY = "Цієї функції ще немає, вона в розробці.";
+const NOT_READY = "This feature isn't ready yet.";
 
 function open(ctx: Context, feature: Feature) {
   if (feature.composer && feature.open) return feature.open(ctx);
@@ -59,7 +59,7 @@ function open(ctx: Context, feature: Feature) {
 }
 
 function label(feature: Feature): string {
-  return feature.composer ? feature.title : `${feature.title} (скоро)`;
+  return feature.composer ? feature.title : `${feature.title} (soon)`;
 }
 
 function menu(): InlineKeyboard {

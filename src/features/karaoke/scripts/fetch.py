@@ -20,22 +20,14 @@ def song_name(meta: dict) -> str:
     )  # a leading «.» would hide the folder
 
 
-# Video labels, like the bot's buttons, in the song's language: (music only, with vocals).
-KARAOKE_LABELS = {
-    "uk": ("Караоке", "Вокал"),
-    "ru": ("Караоке", "Вокал"),
-    "en": ("Karaoke", "Vocals"),
-}
+def video_name(meta: dict, vocals: bool) -> str:
+    """«Coldplay - Yellow (Karaoke)», «Coldplay - Yellow (Vocals)»: the video's file name and title, like the buttons."""
+    return f"{song_name(meta)} ({'Vocals' if vocals else 'Karaoke'})"
 
 
-def video_name(meta: dict, language: str, vocals: bool) -> str:
-    """«Шугар - Німесил (Караоке)», «Coldplay - Yellow (Vocals)»: the video's file name and title."""
-    return f"{song_name(meta)} ({KARAOKE_LABELS[language][vocals]})"
-
-
-def outputs(meta: dict, language: str, versions: list[str]) -> list[tuple[str, bool]]:
+def outputs(meta: dict, versions: list[str]) -> list[tuple[str, bool]]:
     """(video name, with vocals) for each asked version ("music" or "vocals"), in the order asked."""
-    return [(video_name(meta, language, v == "vocals"), v == "vocals") for v in versions]
+    return [(video_name(meta, v == "vocals"), v == "vocals") for v in versions]
 
 
 def find_song(data_dir: str, video_id: str) -> str | None:

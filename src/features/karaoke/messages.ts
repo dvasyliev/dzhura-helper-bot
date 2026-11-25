@@ -12,26 +12,26 @@ export function estimate({
   const upload = youtube ? 1 : 0;
   const range = (extra: number) =>
     low === high ? `${low + extra}` : `${low + extra}–${high + extra}`;
-  return `Займе ≈${range(upload)} хв, обидва — ≈${range(2 * upload + 1)} хв.`;
+  return `Takes ≈${range(upload)} min, both ≈${range(2 * upload + 1)} min.`;
 }
 
 const FRIENDLY: [RegExp, (match: RegExpMatchArray) => string][] = [
   [
     /quotaExceeded|uploadLimitExceeded/,
-    () => "ліміт заливок на YouTube на сьогодні вичерпано, спробуйте завтра",
+    () => "today's YouTube upload limit is used up, try tomorrow",
   ],
-  [/Google: access_denied/, () => "вхід у YouTube скасовано"],
+  [/Google: access_denied/, () => "YouTube sign-in was cancelled"],
   [
     /Google: expired_token/,
-    () => "код для входу протух, надішліть посилання ще раз",
+    () => "the sign-in code expired, send the link again",
   ],
   [
     /fetch failed|ENOTFOUND|ECONNRESET|ETIMEDOUT/,
-    () => "немає зв'язку з інтернетом",
+    () => "no internet connection",
   ],
-  [/DownloadError/, () => "не вдалося скачати кліп з YouTube"],
-  [/exited with code/, () => "збій під час обробки, подробиці в лозі бота"],
-  [/^YouTube (\d+)/, (m) => `YouTube відповів помилкою ${m[1]}`],
+  [/DownloadError/, () => "couldn't download the clip from YouTube"],
+  [/exited with code/, () => "processing failed, details in the bot's log"],
+  [/^YouTube (\d+)/, (m) => `YouTube answered with error ${m[1]}`],
 ];
 
 /** An error as the owner should read it; the bot's own messages pass through. */

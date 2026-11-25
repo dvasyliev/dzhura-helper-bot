@@ -13,6 +13,7 @@ When a change needs something the code cannot set up itself (a store or bucket o
 - Before building it, tell the user what it needs and what it costs on their plan.
 - Do what the service's CLI can do after the user agrees; for a dashboard step, give the exact place and value.
 - Write each new environment variable into the project's docs, and into its example env file when it has one, so the next deployment has it.
+- Tell the user to add each new variable to their own `.env`, with its value or where to get it: Claude cannot open `.env`.
 - Before calling the work done, check the setup is in place (the CLI lists it, or the deployed page uses it); until then, say plainly that it is not.
 
 ## Several agents on `main`

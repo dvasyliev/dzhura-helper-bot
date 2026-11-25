@@ -35,12 +35,17 @@ def voiced_span(
     return round(start + float(first) * hop / sr, 3), round(start + float(last + 1) * hop / sr, 3)
 
 
-def silent_runs(lines: list[dict], samples: np.ndarray, sr: int) -> list[tuple[int, int]]:
-    """(first, last) index of each run of lines that start where no one sings: placed wrong, often past the song's end."""
+def voiced_frames(samples: np.ndarray, sr: int) -> np.ndarray:
+    """Whether someone sings in each 1/20 s, against the song's loud parts."""
     hop = sr // 20
     frames = samples[: len(samples) // hop * hop].reshape(-1, hop)
     rms = np.sqrt((frames**2).mean(axis=1))
-    voiced = rms > 0.05 * float(np.percentile(rms, 95))
+    return rms > 0.05 * float(np.percentile(rms, 95))
+
+
+def silent_runs(lines: list[dict], samples: np.ndarray, sr: int) -> list[tuple[int, int]]:
+    """(first, last) index of each run of lines that start where no one sings: placed wrong, often past the song's end."""
+    voiced = voiced_frames(samples, sr)
     lost = [
         not voiced[max(0, int(l["words"][0]["start"] * 20) - 2) : int(l["words"][0]["start"] * 20) + 8].any()
         for l in lines
@@ -59,10 +64,7 @@ def silent_runs(lines: list[dict], samples: np.ndarray, sr: int) -> list[tuple[i
 
 def voiced_regions(samples: np.ndarray, sr: int, start: float, end: float) -> list[tuple[float, float]]:
     """Stretches of voice in [start, end] s, split by silences of half a second; blips shorter than 0.4 s left out."""
-    hop = sr // 20
-    frames = samples[: len(samples) // hop * hop].reshape(-1, hop)
-    rms = np.sqrt((frames**2).mean(axis=1))
-    voiced = rms > 0.05 * float(np.percentile(rms, 95))
+    voiced = voiced_frames(samples, sr)
     regions: list[list[int]] = []
     for f in range(int(start * 20), min(int(end * 20), len(voiced))):
         if not voiced[f]:

@@ -44,7 +44,7 @@ def parse_plain(text: str) -> list[Line]:
     return lines
 
 
-OWN_LYRICS = "мій текст.txt"
+OWN_LYRICS = "lyrics.txt"
 
 
 def own_lyrics(work_dir: str, lyrics_text: str | None, use_transcript: bool, heard_lines: list[str]) -> str | None:

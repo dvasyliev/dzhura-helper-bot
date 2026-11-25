@@ -21,6 +21,16 @@
             "statusMessage": "Checking command"
           }
         ]
+      },
+      {
+        "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-secrets.sh\"",
+            "statusMessage": "Checking for secret files"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -52,11 +62,17 @@
   "permissions": {
     "deny": [
       "Read(./.env)",
-      "Read(./.env.*)",
-      "Bash(cat *.env*)",
-      "Bash(head *.env*)",
-      "Bash(tail *.env*)",
-      "Bash(grep *.env*)"
+      "Read(./.env.local)",
+      "Read(./.env.*.local)",
+      "Read(./.env.development)",
+      "Read(./.env.production)",
+      "Read(./.env.test)",
+      "Edit(./.env)",
+      "Edit(./.env.local)",
+      "Edit(./.env.*.local)",
+      "Edit(./.env.development)",
+      "Edit(./.env.production)",
+      "Edit(./.env.test)"
     ]
   },
   "enabledPlugins": {

@@ -134,13 +134,13 @@ describe("youtube.publish", () => {
     });
     expect(
       await yt.publish(
-        { file, title: "T", description: "Оригінал: x" },
+        { file, title: "T", description: "Original: x" },
         noLogin,
       ),
     ).toEqual({ url: "https://youtu.be/v1", inPlaylist: true });
     const insert = google.seen.find((r) => r.url.startsWith("/api/upload"))!;
     expect(JSON.parse(insert.body)).toMatchObject({
-      snippet: { title: "T", description: "Оригінал: x" },
+      snippet: { title: "T", description: "Original: x" },
       status: { privacyStatus: "unlisted" },
     });
     expect(google.seen.find((r) => r.method === "PUT")!.body).toBe(

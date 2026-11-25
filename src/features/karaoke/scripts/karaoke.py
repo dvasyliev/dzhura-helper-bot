@@ -36,7 +36,7 @@ from render import render  # noqa: E402
 from subtitles import build_ass  # noqa: E402
 from verify import verify  # noqa: E402
 
-UNSUPPORTED = "Підтримую лише українську, російську й англійську пісні."
+UNSUPPORTED = "Only Ukrainian, Russian and English songs are supported."
 
 events = sys.stdout
 sys.stdout = sys.stderr  # libraries that print must not mix into the events
@@ -82,7 +82,7 @@ def run(job: dict) -> None:
             return emit({"need_lyrics": "mismatch", "transcript": "\n".join(heard["lines"])})
         lines = parse_lrc(found["syncedLyrics"]) if found.get("syncedLyrics") else parse_plain(found["plainLyrics"])
     if not lines:
-        return emit({"error": "Текст пісні порожній."})
+        return emit({"error": "The lyrics are empty."})
     with open(os.path.join(work, "lyrics.json"), "w") as f:
         json.dump(lines, f, ensure_ascii=False, indent=1)
 
@@ -101,7 +101,7 @@ def run(job: dict) -> None:
     ass_path = os.path.join(work, "karaoke.ass")
     with open(ass_path, "w") as f:
         f.write(build_ass(delay(aligned, pause), meta["width"], meta["height"], title, beats))
-    for name, vocals in outputs(meta, language, job["versions"]):
+    for name, vocals in outputs(meta, job["versions"]):
         out, full = render(
             work, ass_path, "clip" if vocals else music_wav, os.path.join(work, f"{name}.mp4"), duration, pause, beats
         )

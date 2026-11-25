@@ -1,11 +1,10 @@
 import os
 import tempfile
 
-from abbreviations import expand_abbreviations
-from fish import to_fish_text
-from prepare import apply_dictionary, load_dictionary, prepare_text
+from uk.abbreviations import expand_abbreviations
+from uk.prepare import apply_dictionary, load_dictionary, prepare_text
 from sentences import MAX_SENTENCE_CHARS, pack, split_sentences
-from voice import save
+from voice import keep_text, save
 
 
 def test_split_sentences() -> None:
@@ -23,9 +22,13 @@ def test_pack() -> None:
     assert pack(["задовге речення"], 5) == ["задовге речення"], "a piece longer than the limit stays whole"
 
 
-def test_fish_text() -> None:
-    assert to_fish_text("Две́рі ма́ли") == "ДвЭрі мАлы", "stressed vowel uppercase, и/е → ы/э"
-    assert to_fish_text("Їжак і щей, Glenarvan") == "Їжак і щэй, Glenarvan", "й, ї and Latin untouched"
+def test_keep_text() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "001 Chapter.txt")
+        assert keep_text("In 1864 he paid $5.", path, "") == path
+        assert open(path, encoding="utf-8").read() == "In 1864 he paid $5.", "saved as written"
+        keep_text("Other text.", path, "")
+        assert open(path, encoding="utf-8").read() == "In 1864 he paid $5.", "an edited file is kept"
 
 
 def test_abbreviations() -> None:

@@ -13,25 +13,32 @@ import {
   unfinished,
   voicedCount,
   type Chapter,
-  type Voice,
 } from "./library.ts";
 import {
   bookDir,
   bookName,
   bookPaths,
   findBooks,
+  bookLanguage,
   forecast,
-  isUkrainian,
   parseNumbers,
   safeFilename,
   voicingTime,
+  type Language,
 } from "./text.ts";
-import { DEFAULT_VOICES, VOICES, isVoiced, removeAudio } from "./voice.ts";
+import {
+  VOICES,
+  isVoiced,
+  removeAudio,
+  voicesFor,
+  type Voice,
+} from "./voice.ts";
 
 const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024; // Telegram Bot API getFile limit
 /** Chapters voiced in one go unless the whole book is asked for. */
 const BATCH = 5;
-const TYPE_RANGE = "Або напишіть номери розділів, наприклад 10-20.";
+const TYPE_RANGE = "Or type chapter numbers, for example 10-20.";
+const ONLY_LANGUAGES = "I voice only Ukrainian and English books.";
 
 /** The last book sent, waiting for the voice to be chosen. */
 let pending: Book | undefined;
@@ -49,7 +56,7 @@ composer.on("message:document", async (ctx, next) => {
   if (!doc.file_name?.toLowerCase().endsWith(".epub")) return next();
   if ((doc.file_size ?? 0) > MAX_DOWNLOAD_BYTES)
     return ctx.reply(
-      "Файл більший за 20 МБ — Telegram не дає ботам його скачати.",
+      "The file is over 20 MB: Telegram doesn't let bots download it.",
     );
 
   try {
@@ -57,21 +64,19 @@ composer.on("message:document", async (ctx, next) => {
     const res = await fetch(
       `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`,
     );
-    if (!res.ok) throw new Error(`Не вдалося скачати файл (${res.status})`);
+    if (!res.ok) throw new Error(`Couldn't download the file (${res.status})`);
     const data = Buffer.from(await res.arrayBuffer());
     const book = await parseEpub(data, doc.file_name);
     if (!book.chapters.length)
-      return ctx.reply("Не знайшов у книжці жодного розділу з текстом.");
-    if (!isUkrainian(book.chapters.map((c) => c.text).join("\n")))
-      return ctx.reply(
-        "Ця книжка, схоже, не українською. Поки що я озвучую лише українські книжки.",
-      );
+      return ctx.reply("Found no chapter with text in the book.");
+    const language = languageOf(book);
+    if (!language) return ctx.reply(ONLY_LANGUAGES);
     const dir = bookDir(bookName(book));
     await mkdir(dir, { recursive: true });
     await writeFile(`${dir}/${safeFilename(doc.file_name)}`, data);
-    await offer(ctx, book);
+    await offer(ctx, book, language);
   } catch (error) {
-    await ctx.reply(`Помилка: ${message(error)}`);
+    await ctx.reply(`Error: ${message(error)}`);
   }
 });
 
@@ -79,26 +84,25 @@ composer.on("message:document", async (ctx, next) => {
 composer.callbackQuery(/^voice:(.+)$/, async (ctx) => {
   const book = pending;
   const voice = VOICES.find((v) => v.id === ctx.match[1]);
-  if (!book || !voice)
-    return ctx.answerCallbackQuery("Надішліть книжку ще раз.");
+  if (!book || !voice) return ctx.answerCallbackQuery("Send the book again.");
   const todo = remaining(book, voice);
   if (todo.length && todo.length <= BATCH) return start(ctx, book, voice, todo);
   await ctx.answerCallbackQuery();
   await ctx.editMessageReplyMarkup().catch(() => {});
   if (todo.length) {
     choosing = { book, voice };
-    return ctx.reply(`Скільки розділів озвучити? ${TYPE_RANGE}`, {
+    return ctx.reply(`How many chapters to voice? ${TYPE_RANGE}`, {
       reply_markup: amountKeyboard(book, voice),
     });
   }
   current = { book, voice };
   await ctx.reply(
-    `«${book.title}» вже озвучено голосом «${voice.name}». Переозвучити розділ: /regen 5`,
+    `«${book.title}» is already voiced by «${voice.name}». To re-voice a chapter: /regen 5`,
   );
 });
 
 composer.callbackQuery(/^amount:(\d+|all)$/, async (ctx) => {
-  if (!choosing) return ctx.answerCallbackQuery("Надішліть книжку ще раз.");
+  if (!choosing) return ctx.answerCallbackQuery("Send the book again.");
   const { book, voice } = choosing;
   const todo = remaining(book, voice);
   await start(
@@ -117,41 +121,41 @@ composer.hears(/^[\d\s,–-]+$/, async (ctx, next) => {
   const numbers = parseNumbers(ctx.message!.text!);
   const asked = all.filter((c) => numbers.includes(c.index + 1));
   if (!asked.length)
-    return ctx.reply(`Розділи — від 1 до ${all.length}, наприклад 10-20.`);
+    return ctx.reply(`Chapters go from 1 to ${all.length}, for example 10-20.`);
   const left = new Set(remaining(book, voice).map((c) => c.index));
   const todo = asked.filter((c) => left.has(c.index));
   if (!todo.length)
     return ctx.reply(
-      `Ці розділи вже озвучено голосом «${voice.name}». Переозвучити: /regen ${ctx.message!.text}`,
+      `These chapters are already voiced by «${voice.name}». To re-voice: /regen ${ctx.message!.text}`,
     );
   await start(ctx, book, voice, todo);
 });
 
 composer.command("regen", async (ctx) => {
-  if (!current) return ctx.reply("Спочатку надішліть книжку й оберіть голос.");
+  if (!current) return ctx.reply("First send a book and pick a voice.");
   const { book, voice } = current;
   const all = chapters(book);
   const numbers = parseNumbers(ctx.match);
   const todo = all.filter((c) => numbers.includes(c.index + 1));
   if (!todo.length)
     return ctx.reply(
-      `Вкажіть номери розділів від 1 до ${all.length}: /regen 5 або /regen 5-7`,
+      `Give chapter numbers from 1 to ${all.length}: /regen 5 or /regen 5-7`,
     );
   const { audioDir } = bookPaths(bookName(book), voice.name);
   const chatId = ctx.chat.id;
   const regen = async () => {
     for (const c of todo) await removeAudio(audioDir, c.name);
     await voiceBook(ctx.api, chatId, book, voice, todo, false);
-    await notify(ctx.api, chatId, "Переозвучено.");
+    await notify(ctx.api, chatId, "Re-voiced.");
   };
   if (
-    !startJob(`переозвучка «${book.title}»`, regen, (error) =>
-      notify(ctx.api, chatId, `Переозвучку зупинено: ${message(error)}`),
+    !startJob(`re-voicing «${book.title}»`, regen, (error) =>
+      notify(ctx.api, chatId, `Re-voicing stopped: ${message(error)}`),
     )
   )
-    return ctx.reply(`Зачекайте, зараз триває ${busyWith()}.`);
+    return ctx.reply(`Please wait, ${busyWith()} is in progress.`);
   await ctx.reply(
-    `Переозвучую ${todo.map((c) => `«${c.name}»`).join(", ")} голосом «${voice.name}».`,
+    `Re-voicing ${todo.map((c) => `«${c.name}»`).join(", ")} with «${voice.name}».`,
   );
 });
 
@@ -172,16 +176,16 @@ composer.on("message:text", async (ctx, next) => {
     folders.filter((f) => f.isDirectory()).map((f) => f.name),
   ).slice(0, MAX_FOUND);
   if (!found.length)
-    return ctx.reply("Такої книжки ще немає. Надішліть EPUB, щоб її озвучити.");
+    return ctx.reply("No such book yet. Send the EPUB to voice it.");
   const keyboard = new InlineKeyboard();
   if (found.length === 1) {
-    keyboard.text("Так", "book:0").text("Ні", "book:no");
-    return ctx.reply(`«${found[0]}» — ця?`, { reply_markup: keyboard });
+    keyboard.text("Yes", "book:0").text("No", "book:no");
+    return ctx.reply(`«${found[0]}»: this one?`, { reply_markup: keyboard });
   }
   const list = InlineKeyboard.from(
     found.map((name, i) => [InlineKeyboard.text(name, `book:${i}`)]),
   );
-  await ctx.reply(`Яку саме? Якщо потрібної немає, уточніть назву.`, {
+  await ctx.reply(`Which one? If it isn't here, refine the title.`, {
     reply_markup: list,
   });
 });
@@ -192,29 +196,30 @@ composer.callbackQuery(/^book:(.+)$/, async (ctx) => {
   const folder = found[Number(ctx.match[1])];
   if (!folder)
     return ctx.reply(
-      "Добре. Напишіть назву чи автора інакше або надішліть EPUB.",
+      "OK. Write the title or author differently, or send the EPUB.",
     );
   try {
     const book = await loadBook(folder);
     if (!book)
       return ctx.reply(
-        `У папці «${folder}» немає EPUB. Надішліть книжку ще раз.`,
+        `The folder «${folder}» has no EPUB. Send the book again.`,
       );
-    await offer(ctx, book);
+    const language = languageOf(book);
+    if (!language) return ctx.reply(ONLY_LANGUAGES);
+    await offer(ctx, book, language);
   } catch (error) {
-    await ctx.reply(`Помилка: ${message(error)}`);
+    await ctx.reply(`Error: ${message(error)}`);
   }
 });
 
 export const audiobook: Feature = {
   id: "audiobook",
-  title: "🎧 Створити аудіокнигу",
+  title: "🎧 Create an audiobook",
   open: openMenu,
   commands: [
     {
       command: "regen",
-      description:
-        "Переозвучити розділи останньої книжки: /regen 5 або /regen 5-7",
+      description: "Re-voice chapters of the last book: /regen 5 or /regen 5-7",
     },
   ],
   composer,
@@ -231,13 +236,13 @@ async function start(ctx: Context, book: Book, voice: Voice, todo: Chapter[]) {
       return notify(
         ctx.api,
         chatId,
-        `Готово: «${book.title}» озвучено повністю. Файли: ${bookPaths(bookName(book), voice.name).audioDir}`,
+        `Done: «${book.title}» is fully voiced. Files: ${bookPaths(bookName(book), voice.name).audioDir}`,
       );
     choosing = { book, voice };
     await ctx.api
       .sendMessage(
         chatId,
-        `Готово ${total - left} з ${total}. Озвучити далі? ${TYPE_RANGE}`,
+        `Done ${total - left} of ${total}. Voice more? ${TYPE_RANGE}`,
         { reply_markup: amountKeyboard(book, voice) },
       )
       .catch((error) => console.error("sendMessage failed:", error));
@@ -246,10 +251,10 @@ async function start(ctx: Context, book: Book, voice: Voice, todo: Chapter[]) {
     notify(
       ctx.api,
       chatId,
-      `Озвучку зупинено: ${message(error)}\nЩоб продовжити з цього місця, надішліть книжку ще раз або напишіть її назву.`,
+      `Voicing stopped: ${message(error)}\nTo continue from here, send the book again or type its title.`,
     );
-  if (!startJob(`озвучка «${book.title}»`, voiceTodo, stopped)) {
-    const busy = `Зачекайте, зараз триває ${busyWith()}.`;
+  if (!startJob(`voicing «${book.title}»`, voiceTodo, stopped)) {
+    const busy = `Please wait, ${busyWith()} is in progress.`;
     return ctx.callbackQuery ? ctx.answerCallbackQuery(busy) : ctx.reply(busy);
   }
   pending = undefined;
@@ -261,30 +266,31 @@ async function start(ctx: Context, book: Book, voice: Voice, todo: Chapter[]) {
   }
   const range =
     todo.length > 1
-      ? `з «${todo[0].name}» по «${todo.at(-1)!.name}»`
+      ? `from «${todo[0].name}» to «${todo.at(-1)!.name}»`
       : `«${todo[0].name}»`;
   await ctx.reply(
-    `Озвучую голосом «${voice.name}» ${range}.\n${estimate(todo)}`,
+    `Voicing with «${voice.name}» ${range}.\n${estimate(todo, voice)}`,
   );
 }
 
-/** «5 розділів · ≈3 хв» and «Решту (66) · ≈1 год», for the chapters `voice` has not voiced yet. */
+/** «5 chapters · ≈3 min» and «The rest (66) · ≈1 h», for the chapters `voice` has not voiced yet. */
 function amountKeyboard(book: Book, voice: Voice): InlineKeyboard {
   const todo = remaining(book, voice);
   const time = (list: Chapter[]) =>
-    config.ttsProvider === "holos"
-      ? ` · ≈${voicingTime(list.reduce((sum, c) => sum + c.text.length, 0))}`
-      : "";
+    ` · ≈${voicingTime(
+      list.reduce((sum, c) => sum + c.text.length, 0),
+      voice.provider,
+    )}`;
   const keyboard = new InlineKeyboard();
   if (todo.length > BATCH)
     keyboard.text(
-      `${BATCH} розділів${time(todo.slice(0, BATCH))}`,
+      `${BATCH} chapters${time(todo.slice(0, BATCH))}`,
       `amount:${BATCH}`,
     );
   const rest =
     todo.length === chapters(book).length
-      ? "Усю книжку"
-      : `Решту (${todo.length})`;
+      ? "The whole book"
+      : `The rest (${todo.length})`;
   return keyboard.text(`${rest}${time(todo)}`, `amount:all`);
 }
 
@@ -296,7 +302,7 @@ function remaining(book: Book, voice: Voice): Chapter[] {
 /** The menu button: what to send, and the most recently touched books that are not voiced to the end. */
 async function openMenu(ctx: Context) {
   const text =
-    "Надішліть EPUB-книжку українською, і я озвучу її по розділах. Або напишіть назву чи автора книжки, яку вже надсилали.";
+    "Send an EPUB book in Ukrainian or English and I'll voice it chapter by chapter. Or type the title or author of a book you sent before.";
   const books = await unfinished();
   found = books.map((b) => b.folder);
   if (!books.length) return ctx.reply(text);
@@ -305,51 +311,49 @@ async function openMenu(ctx: Context) {
       InlineKeyboard.text(`${b.folder} · ${b.done}/${b.total}`, `book:${i}`),
     ]),
   );
-  await ctx.reply(`${text}\n\nНе дозвучені:`, { reply_markup: keyboard });
+  await ctx.reply(`${text}\n\nNot finished:`, { reply_markup: keyboard });
 }
 
-/** What is already voiced, the forecast and the voice buttons. */
-async function offer(ctx: Context, book: Book) {
+function languageOf(book: Book): Language | undefined {
+  return bookLanguage(book.chapters.map((c) => c.text).join("\n"));
+}
+
+/** What is already voiced, the forecast and the buttons with the voices of the book's language. */
+async function offer(ctx: Context, book: Book, language: Language) {
   pending = book;
   choosing = undefined;
   const all = chapters(book);
+  const voices = voicesFor(language);
   const lines = [
-    `${bookName(book)}: розділів ${all.length}.`,
-    ...voicedSoFar(book, all),
-    estimate(all),
-    "Яким голосом озвучити?",
+    `${bookName(book)}: ${all.length} chapters.`,
+    ...voicedSoFar(book, all, voices),
+    estimate(all, voices[0]),
+    "Which voice?",
   ];
-  await ctx.reply(lines.join("\n"), { reply_markup: voiceKeyboard() });
+  const keyboard = new InlineKeyboard();
+  for (const voice of voices) keyboard.text(voice.name, `voice:${voice.id}`);
+  await ctx.reply(lines.join("\n"), { reply_markup: keyboard });
 }
 
-/** «Уже озвучено голосом «Оксана»: 12 з 71.» for each voice that has audio of this book. */
-function voicedSoFar(book: Book, all: Chapter[]): string[] {
-  const done = VOICES.map((voice) => ({
-    voice,
-    count: voicedCount(book, voice, all),
-  })).filter((d) => d.count);
+/** «Already voiced by «Oksana»: 12 of 71.» for each voice that has audio of this book. */
+function voicedSoFar(book: Book, all: Chapter[], voices: Voice[]): string[] {
+  const done = voices
+    .map((voice) => ({
+      voice,
+      count: voicedCount(book, voice, all),
+    }))
+    .filter((d) => d.count);
   const lines = done.map(
-    (d) =>
-      `Уже озвучено голосом «${d.voice.name}»: ${d.count} з ${all.length}.`,
+    (d) => `Already voiced by «${d.voice.name}»: ${d.count} of ${all.length}.`,
   );
   if (done.some((d) => d.count < all.length))
-    lines.push("Оберіть той самий голос, щоб продовжити з місця зупинки.");
+    lines.push("Pick the same voice to continue where it stopped.");
   return lines;
 }
 
-function estimate(todo: Chapter[]): string {
+function estimate(todo: Chapter[], voice: Voice): string {
   return forecast(
     todo.map((c) => c.text.length),
-    config.ttsProvider === "holos",
+    voice.provider,
   );
-}
-
-/** The owner's chosen female and male voice. */
-function voiceKeyboard(): InlineKeyboard {
-  const keyboard = new InlineKeyboard();
-  for (const id of DEFAULT_VOICES) {
-    const voice = VOICES.find((v) => v.id === id);
-    if (voice) keyboard.text(voice.name, `voice:${voice.id}`);
-  }
-  return keyboard;
 }

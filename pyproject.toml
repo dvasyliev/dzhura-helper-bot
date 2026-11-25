@@ -8,10 +8,13 @@ dependencies = [
     "audio-separator[cpu]>=0.48",
     "audioread>=3.1.0",
     "ctc-forced-aligner",
+    "en-core-web-sm",
     "holos-tts-mlx>=0.1",
     "ipa-uk",
     "lameenc>=1.9.0",
     "librosa>=1.0.1",
+    "misaki[en]>=0.9.4",
+    "mlx-audio>=0.6.8",
     "mlx-whisper>=0.4.3",
     "num2words>=0.5.14",
     "numpy>=2.4.6",
@@ -24,6 +27,7 @@ dependencies = [
 [tool.uv.sources]
 ipa-uk = { git = "https://github.com/patriotyk/ipa-uk.git" }
 ctc-forced-aligner = { git = "https://github.com/MahmoudAshraf97/ctc-forced-aligner.git", rev = "277720ff832f6ec92bc97e32c7a6eda5dc466277" }
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
 
 [dependency-groups]
 dev = [
@@ -37,10 +41,11 @@ dev = [
 ]
 
 [tool.deptry]
-# Scripts in src/features/*/scripts import their neighbours by bare name.
+# Scripts in src/features/*/scripts import their neighbours and subpackages (uk, tts) by bare name.
 known_first_party = [
-    "abbreviations", "fish", "holos", "numbers_uk", "prepare", "sentences", "stress_index", "voice",
+    "sentences", "tts", "uk", "voice",
     "align", "countin", "fetch", "karaoke", "listen", "lyrics", "render", "separate", "subtitles", "verify",
 ]
-# audioread: audio-separator needs it but does not declare it. pytest: imported only by the tests.
-per_rule_ignores = { DEP002 = ["audioread"], DEP004 = ["pytest"] }
+# audioread: audio-separator needs it but does not declare it. misaki[en] and en-core-web-sm: mlx-audio's Kokoro
+# needs them for English but does not declare them. pytest: imported only by the tests.
+per_rule_ignores = { DEP002 = ["audioread", "misaki", "en-core-web-sm"], DEP004 = ["pytest"] }

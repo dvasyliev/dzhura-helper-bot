@@ -1,6 +1,6 @@
 import pytest
 
-from numbers_uk import numbers_to_words
+from uk.numbers import numbers_to_words
 
 cases = {
     "26 липня 1864 року": "двадцять шостого липня тисяча вісімсот шістдесят четвертого року",

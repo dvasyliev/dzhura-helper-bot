@@ -1,38 +1,36 @@
 import { existsSync, readFileSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
-import { config } from "../../config.ts";
 import { runPython } from "../../python.ts";
+import type { Language, Provider } from "./text.ts";
 
-/** Voice id → the name shown to the user, in the owner's order. */
-type Named = Record<string, string>;
-type ProviderVoices = {
-  male: Named;
-  female: Named;
-  default: { female: string; male: string };
+export type Voice = {
+  id: string;
+  /** On the button and the name of the audio folder, so unique across languages. */
+  name: string;
+  provider: Provider;
+  language: Language;
 };
 
-const providers: Record<string, ProviderVoices> = JSON.parse(
-  readFileSync("voices.json", "utf8"),
+const byLanguage: Record<Language, Omit<Voice, "language">[]> = JSON.parse(
+  readFileSync(new URL("voices.json", import.meta.url), "utf8"),
 );
-const voices = providers[config.ttsProvider];
-if (!voices)
-  throw new Error(
-    `TTS_PROVIDER=${config.ttsProvider}: no such provider in voices.json`,
-  );
+/** Every voice of every language; the bot offers those of the book's language. */
+export const VOICES: Voice[] = Object.entries(byLanguage).flatMap(
+  ([language, voices]) =>
+    voices.map((v) => ({ ...v, language: language as Language })),
+);
 
-const named = (group: Named) =>
-  Object.entries(group).map(([id, name]) => ({ name, id }));
-export const VOICES = [...named(voices.male), ...named(voices.female)];
-/** The two voices offered in the bot; the rest are for `npm run sample`. */
-export const DEFAULT_VOICES = [voices.default.female, voices.default.male];
+export function voicesFor(language: Language): Voice[] {
+  return VOICES.filter((v) => v.language === language);
+}
 
 export type VoiceJob = {
-  voiceId: string;
+  voice: Voice;
   textDir: string;
   audioDir: string;
   /** The book's stress dictionary; it wins over automatic stress marks. */
   dictionary: string;
-  /** Where to write the list of words with guessed stress; omitted when re-voicing single chapters. */
+  /** Where to write the list of words with guessed stress (Ukrainian only); omitted when re-voicing single chapters. */
   report?: string;
   chapters: { index: number; name: string; text: string }[];
 };
@@ -42,7 +40,7 @@ export type VoiceEvent =
   | { report: string; words: number };
 
 /**
- * Voices the job's chapters with src/features/audiobook/scripts/voice.py (provider from TTS_PROVIDER, run through uv),
+ * Voices the job's chapters with src/features/audiobook/scripts/voice.py (run through uv) and the voice's provider,
  * yielding each chapter's mp3 files in order as soon as they are ready. A chapter that failed comes with
  * `error` and is the last one.
  */
@@ -50,8 +48,9 @@ export async function* voiceChapters(
   job: VoiceJob,
 ): AsyncGenerator<VoiceEvent> {
   const input = {
-    provider: config.ttsProvider,
-    voice: job.voiceId,
+    provider: job.voice.provider,
+    language: job.voice.language,
+    voice: job.voice.id,
     text_dir: job.textDir,
     audio_dir: job.audioDir,
     dictionary: job.dictionary,

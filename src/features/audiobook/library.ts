@@ -2,13 +2,12 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { parseEpub, type Book } from "./epub.ts";
 import { bookName, bookPaths, chapterName } from "./text.ts";
-import { VOICES, isVoiced, type VoiceJob } from "./voice.ts";
+import { VOICES, isVoiced, type Voice, type VoiceJob } from "./voice.ts";
 
 export const BOOKS_DIR = "data/audiobook";
 /** At most this many books (found by name, or unfinished) are offered as buttons. */
 export const MAX_FOUND = 5;
 
-export type Voice = (typeof VOICES)[number];
 export type Chapter = VoiceJob["chapters"][number];
 
 /** Up to MAX_FOUND book folders, most recently changed first, where no voice has every chapter. */

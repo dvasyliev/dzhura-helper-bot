@@ -2,7 +2,7 @@
 
 import re
 
-from numbers_uk import ROMAN, ordinal, roman
+from uk.numbers import ROMAN, ordinal, roman
 
 FIXED = {
     "і т. д.": "і так далі",

@@ -8,13 +8,13 @@ import re
 import sys
 from collections import Counter
 
-from abbreviations import expand_abbreviations
-from numbers_uk import numbers_to_words
+from uk.abbreviations import expand_abbreviations
+from uk.numbers import numbers_to_words
 
 STRESS = "́"
-DICTIONARY_HEADER = """# Словник наголосів цієї книжки: по слову на рядок, з наголосом, напр. Глена́рван
-# Має перевагу над автоматичними наголосами. Кожну форму пишіть окремо: Глена́рвана, Глена́рваном.
-# Кандидати — у «сумнівні наголоси.txt». Готові розділи переозвучте: /regen <номер>.
+DICTIONARY_HEADER = """# This book's stress dictionary: one word per line, with its stress, e.g. Глена́рван
+# It overrides the automatic stresses. Write each form separately: Глена́рвана, Глена́рваном.
+# Candidates are in «stress-check.txt». Re-voice finished chapters: /regen <number>.
 """
 VOWELS = set("аеєиіїоуюяАЕЄИІЇОУЮЯ")
 # Letters, each maybe with a stress mark after it; apostrophes and hyphens only between letters.
@@ -146,16 +146,16 @@ def write_report(text_dir: str, path: str, dictionary: str) -> int:
         variants.setdefault(plain(word), []).append(word)
     with open(path, "w", encoding="utf-8") as f:
         f.write(
-            "# Слова, де наголос вгадано: невідоме слово чи ім'я.\n"
-            "# Неправильні впишіть у «словник наголосів.txt» поруч, по слову на рядок, з наголосом: Глена́рван\n"
-            "# Кожну форму окремо (Глена́рвана, Глена́рваном). Після правки: /regen <номер розділу>.\n\n"
+            "# Words whose stress was guessed: an unknown word or a name.\n"
+            "# Write the wrong ones into «stresses.txt» next to this file, one word per line, with its stress: Глена́рван\n"
+            "# Each form separately (Глена́рвана, Глена́рваном). After editing: /regen <chapter number>.\n\n"
         )
         for word, count in guessed.most_common():
             f.write(f"{word}  ×{count}\n")
         f.write(
-            "\n# Омографи: слово має кілька наголосів (за́мок/замо́к), тут — обраний за змістом речення.\n"
-            "# Спершу слова, прочитані в книжці по-різному. Словник змінить слово в усій книжці;\n"
-            "# щоб виправити одне місце, правте text/<розділ>.txt.\n\n"
+            "\n# Homographs: the word has several stresses (за́мок/замо́к); shown is the one picked from the sentence's meaning.\n"
+            "# Words read differently within the book come first. The dictionary changes a word in the whole book;\n"
+            "# to fix one place, edit text/<chapter>.txt.\n\n"
         )
         # Words read two ways in the book first: one of the ways is likely wrong.
         for words in sorted(variants.values(), key=lambda ws: (len(ws) < 2, -sum(homographs[w] for w in ws))):

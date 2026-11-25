@@ -27,8 +27,8 @@ export function bookPaths(name: string, voiceName: string) {
   return {
     textDir: `${dir}/text`,
     audioDir: `${dir}/audio/${safeFilename(voiceName)}`,
-    dictionary: `${dir}/словник наголосів.txt`,
-    report: `${dir}/сумнівні наголоси.txt`,
+    dictionary: `${dir}/stresses.txt`,
+    report: `${dir}/stress-check.txt`,
   };
 }
 
@@ -41,50 +41,66 @@ export function findBooks(query: string, names: string[]): string[] {
     : [];
 }
 
-/** Cyrillic text with more і/ї/є/ґ than ы/э/ъ/ё (Russian). */
-export function isUkrainian(text: string): boolean {
+/** The book languages the bot voices. */
+export type Language = "uk" | "en";
+export type Provider = "holos" | "kokoro";
+
+/** Frequent English words; in English prose they make about a third of all words. */
+const ENGLISH_WORDS = new Set(
+  "the and of to a in that was he she it his her i you is for with on had as at but not be by they".split(
+    " ",
+  ),
+);
+const MIN_ENGLISH_SHARE = 0.15;
+
+/** «uk»: Cyrillic with more і/ї/є/ґ than ы/э/ъ/ё (Russian). «en»: Latin with many frequent English words
+ * (French and German have few of them). Any other text: undefined. */
+export function bookLanguage(text: string): Language | undefined {
   const count = (letters: RegExp) => text.match(letters)?.length ?? 0;
-  return (
-    count(/[а-яіїєґ]/gi) > count(/[a-z]/gi) &&
-    count(/[іїєґ]/gi) > count(/[ыэъё]/gi)
-  );
+  const cyrillic = count(/[а-яіїєґё]/gi);
+  const latin = count(/[a-z]/gi);
+  if (cyrillic > latin)
+    return count(/[іїєґ]/gi) > count(/[ыэъё]/gi) ? "uk" : undefined;
+  const words = text.toLowerCase().match(/[a-z']+/g) ?? [];
+  const english = words.filter((w) => ENGLISH_WORDS.has(w)).length;
+  return words.length && english / words.length >= MIN_ENGLISH_SHARE
+    ? "en"
+    : undefined;
 }
 
-// Measured on «Діти капітана Гранта», HolosTTS on an Apple M5, with pauses and accentuk:
-// chapter 1, 9 613 chars → 13.3 min of audio in 40 s, model loading included.
-const CHARS_PER_MINUTE = 700;
 const MB_PER_MINUTE = 0.48; // 64 kbps mono mp3
-const GENERATION_SECONDS_PER_CHAR = 0.0042;
+/** Measured on an Apple M5. HolosTTS: «Діти капітана Гранта», chapter 1, 9 613 chars → 13.3 min of audio
+ * in 40 s, model loading included. Kokoro: 2 540 chars of English → 3 min of audio in 18 s. */
+const SPEED: Record<
+  Provider,
+  { charsPerMinute: number; secondsPerChar: number }
+> = {
+  holos: { charsPerMinute: 700, secondsPerChar: 0.0042 },
+  kokoro: { charsPerMinute: 850, secondsPerChar: 0.007 },
+};
 
-/** «≈18 год 10 хв аудіо, ≈520 МБ (найбільший розділ ≈21 МБ)», plus voicing time when it is known:
+/** «≈18 h 10 min of audio, ≈520 MB (largest chapter ≈21 MB)» and the voicing time:
  * for all of `chapterChars` and for the first of them, the first file the owner gets. */
-export function forecast(
-  chapterChars: number[],
-  withVoicingTime: boolean,
-): string {
-  const minutes = (chars: number) => chars / CHARS_PER_MINUTE;
+export function forecast(chapterChars: number[], provider: Provider): string {
+  const minutes = (chars: number) => chars / SPEED[provider].charsPerMinute;
   const total = chapterChars.reduce((a, b) => a + b, 0);
   const mb = (chars: number) =>
     Math.max(1, Math.round(minutes(chars) * MB_PER_MINUTE));
-  const lines = [
-    `≈${duration(minutes(total))} аудіо, ≈${mb(total)} МБ (найбільший розділ ≈${mb(Math.max(...chapterChars))} МБ).`,
-  ];
-  if (withVoicingTime)
-    lines.push(
-      `Перший розділ буде за ≈${voicingTime(chapterChars[0])}, уся озвучка займе ≈${voicingTime(total)}.`,
-    );
-  return lines.join("\n");
+  return [
+    `≈${duration(minutes(total))} of audio, ≈${mb(total)} MB (largest chapter ≈${mb(Math.max(...chapterChars))} MB).`,
+    `The first chapter will be ready in ≈${voicingTime(chapterChars[0], provider)}, the whole voicing takes ≈${voicingTime(total, provider)}.`,
+  ].join("\n");
 }
 
-/** HolosTTS time to voice `chars` characters, e.g. «3 хв». */
-export function voicingTime(chars: number): string {
-  return duration((chars * GENERATION_SECONDS_PER_CHAR) / 60);
+/** Time to voice `chars` characters, e.g. «3 min». */
+export function voicingTime(chars: number, provider: Provider): string {
+  return duration((chars * SPEED[provider].secondsPerChar) / 60);
 }
 
 export function duration(minutes: number): string {
   const m = Math.max(1, Math.round(minutes));
   const h = Math.floor(m / 60);
-  return h ? `${h} год${m % 60 ? ` ${m % 60} хв` : ""}` : `${m} хв`;
+  return h ? `${h} h${m % 60 ? ` ${m % 60} min` : ""}` : `${m} min`;
 }
 
 /** «5 7-9» → [5, 7, 8, 9]. */

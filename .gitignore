@@ -7,3 +7,5 @@ __pycache__/
 
 # Added by the codebase-harness plugin
 /.coverage
+.ruff_cache/
+.pytest_cache/

@@ -1,102 +1,39 @@
 # Dzhura
 
-Особистий Telegram-бот-помічник з кількома функціями (аудіокнига, переклад, караоке, summary з YouTube). Відповідає тільки власнику. Потрібен Mac з Apple Silicon.
+A personal Telegram helper bot that runs on your own Mac. A *dzhura* was a Cossack's young helper who carried out any errand; this one turns books into audiobooks and songs into karaoke. It answers only its owner, and all the heavy work runs locally on Apple Silicon: no cloud, no subscriptions.
 
-Аудіокнига: надсилаєте EPUB українською, бот показує прогноз (тривалість, МБ, час озвучки), ви обираєте голос, і він озвучує кожен розділ локально моделлю [HolosTTS](https://huggingface.co/patriotyk/HolosTTS) та надсилає аудіо строго по порядку (`001 Розділ I. Риба-молот`, …).
+## Features
 
-## Налаштування
+| Feature | What you send | What you get | Status |
+|---|---|---|---|
+| 🎧 Audiobook | an EPUB in Ukrainian or English | an mp3 per chapter, voiced by [HolosTTS](https://huggingface.co/patriotyk/HolosTTS) (Ukrainian) or [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) (English) | works |
+| 🎤 Karaoke | a YouTube link | a karaoke video with words filling in time, optionally uploaded to your YouTube channel | works |
+| 🌐 Book translation | an EPUB | the book in another language | soon |
+| 📝 YouTube summary | a YouTube link | a short retelling of the video | soon |
 
-1. Створіть бота в [@BotFather](https://t.me/BotFather) (`/newbot`) і скопіюйте токен.
-2. Дізнайтеся свій Telegram ID в [@userinfobot](https://t.me/userinfobot).
-3. `cp .env.example .env` і заповніть `BOT_TOKEN`, `OWNER_ID`.
-4. `npm install`
-5. `brew install uv && uv sync && uv run accentuk download --light && uv run python src/features/audiobook/scripts/stress_index.py` — Python-частина озвучки (Python 3.12), моделі наголосів (~375 МБ) і наголоси з Вікісловника (скачує ~320 МБ, зберігає 18 МБ у `~/.cache/audiobook-bot/stress.json`) ([src/features/audiobook/scripts/voice.py](src/features/audiobook/scripts/voice.py)). Модель (~кілька сотень МБ) скачається при першому запуску.
-6. Для караоке: `brew tap homebrew-ffmpeg/ffmpeg && brew install homebrew-ffmpeg/ffmpeg/ffmpeg deno` — ffmpeg з `libass` (малює субтитри; звичайний `brew install ffmpeg` його не має) і `deno` (потрібен `yt-dlp` для YouTube). Моделі скачаються при першому караоке: відділення голосу ~900 МБ, синхронізація слів ~1,2 ГБ, Whisper ~1,5 ГБ.
+## Ideas
 
-## Запуск
+Features that would reuse what is already here (Whisper, vocal separation, HolosTTS, Kokoro, yt-dlp, ffmpeg):
+
+- **Voice message to text**: forward a voice note or video note, get the text and a short summary.
+- **Article to audio**: send a link, get an mp3, the same pipeline as audiobooks.
+- **Translate and voice a book**: an English EPUB in, a Ukrainian audiobook out.
+- **Backing track or a cappella**: music only or vocals only as an mp3, no video.
+- **Lyrics with translation**: a foreign song with a Ukrainian line under each sung line.
+- **Subtitles for any video**: an `.srt` and a video with burned-in subtitles, optionally translated.
+
+## Quick start
+
+You need a Mac with Apple Silicon and about 6 GB for models.
 
 ```bash
+brew install node uv
+npm install
+uv sync
+cp .env.example .env   # fill in BOT_TOKEN and OWNER_ID
 caffeinate -i npm start
 ```
 
-`caffeinate` не дає Mac заснути, поки бот працює. Зупинка: `Ctrl+C`.
+The full guide (Telegram bot, stress models, ffmpeg with libass, YouTube upload), by hand or with an agent: [SETUP.md](SETUP.md).
 
-## Будова
-
-`/start` показує меню функцій. Кожна функція — окрема папка в [src/features/](src/features/) зі своїми обробниками повідомлень і кнопок; список і порядок у меню — [src/features/index.ts](src/features/index.ts). Функція без обробників показується як «(скоро)». Важкі задачі (озвучка тощо) йдуть по одній через [src/jobs.ts](src/jobs.ts). Python-частини лежать у папці функції: `src/features/<функція>/scripts/` (спільне оточення — `pyproject.toml` у корені).
-
-| Функція | Стан |
-|---|---|
-| 🎧 Створити аудіокнигу | працює |
-| 🌐 Переклад книжки | скоро |
-| 🎤 Згенерувати караоке | працює |
-| 📝 Summary з YouTube | скоро |
-
-## Як озвучується аудіокнига
-
-Бот приймає лише українські книжки (визначає за літерами тексту). Папка книжки — `data/audiobook/<автор> - <назва>/`, назва й автор беруться з опису EPUB, а якщо назви там немає — з імені файлу. Якщо книжку вже озвучували, бот одразу пише, скільки розділів готово яким голосом. До вже надісланої книжки можна повернутися без EPUB: напишіть слово з назви чи автора («верн», «гранта») — бот покаже до 5 збігів кнопками (або спитає «ця?», якщо збіг один).
-
-Розділи беруться зі змісту книжки (один файл EPUB може містити кілька розділів). Для кожного розділу:
-
-1. **Підготовка тексту** ([prepare.py](src/features/audiobook/scripts/prepare.py)): скорочення словами («т. д.», «1864 р.», «XIX ст.», «5 км», «%», «£»), цифри словами ([numbers_uk.py](src/features/audiobook/scripts/numbers_uk.py)), наголоси ([accentuk](https://pypi.org/project/accentuk/): словник + нейромережа, що за змістом речення обирає між варіантами, як-от за́мок/замо́к; де accentuk вгадував, а Вікісловник знає один наголос — береться з Вікісловника), поверх них — загальні правила для всіх книжок ([stress_rules.txt](src/features/audiobook/scripts/stress_rules.txt), напр. коли́ замість ко́ли) і словник наголосів книжки (`словник наголосів.txt` у її папці). Результат зберігається в `text/001 Назва.txt`; його можна правити руками. Тексти наступних розділів готуються в окремому процесі, поки озвучується поточний.
-2. **Озвучка**: фонеми (ipa-uk) → HolosTTS по реченню, вирівняна гучність, паузи: 0,35 с між реченнями, 0,7 с між абзацами, 1,2 с після заголовка.
-
-Час: ~40 с на розділ у 10 тис. символів (≈13 хв аудіо); «Діти капітана Гранта» (22 год) — ≈1 год 5 хв. Перед озвучкою бот пише прогноз: тривалість, розмір, коли буде перший розділ і скільки займе вся книжка.
-
-```
-data/audiobook/<автор> - <назва>/
-  <файл>.epub
-  text/001 Розділ I. Риба-молот.txt        ← підготовлений текст, можна правити
-  audio/<голос>/001 Розділ I. Риба-молот.mp3
-  сумнівні наголоси.txt                    ← слова, де наголос вгадано
-  словник наголосів.txt                    ← ваші виправлення: по слову на рядок, Глена́рван
-```
-
-- **Продовження**: файл спершу пишеться як `.part` і перейменовується, коли готовий, тож `.mp3` завжди повний. Якщо озвучку перервано, надішліть книжку ще раз і оберіть той самий голос — бот продовжить з першого неготового розділу. Розділ, що не вдався двічі, зупиняє книжку, щоб порядок не збився.
-- **Сумнівні наголоси**: коли всі тексти готові, бот надсилає список слів, де наголос вгадано (невідоме слово чи ім'я), і омографів (за́мок/замо́к; зі списку [lang-uk](https://github.com/lang-uk/ukrainian-tts-preprocessing) і Вікісловника) — спершу ті, що прочитані в книжці по-різному. Неправильні допишіть у `словник наголосів.txt` цієї книжки — наступні розділи підхоплять це одразу.
-- **Переозвучка**: `/regen 5` або `/regen 5-7` — заново озвучує розділи останньої книжки з `text/*.txt` (з урахуванням ручних правок і словника книжки). Щоб підготувати текст розділу з EPUB заново, видаліть його `.txt`.
-
-Голоси лежать у [voices.json](voices.json), згруповані за провайдером (`holos`, `fish`): `male`, `female` (id голосу → ім'я на кнопці, як-от «Оксана»; у цьому ж порядку кнопки) і `default` — жіночий і чоловічий голоси, які бот пропонує кнопками (решта — для порівняння в `npm run sample`). Провайдер обирається в `.env`: `TTS_PROVIDER=holos`. `TTS_PROVIDER=fish` — хмарний Fish Audio (потрібен `FISH_API_KEY`; модель `FISH_MODEL`, за замовчуванням `s2.1-pro-free`): він читає з російським акцентом, тому для нього наголошена голосна пишеться великою, а `и`/`е` замінюються на `ы`/`э` ([scripts/audiobook/fish.py](src/features/audiobook/scripts/fish.py)).
-
-## Як робиться караоке
-
-Надсилаєте посилання на YouTube-кліп (українською, російською чи англійською), бот питає, яку версію зробити: «🎵 Караоке» (лише музика), «🎤 Вокал» (з голосом) чи «🎵🎤 Обидва», і пише, на якому він кроці. Усе робить [karaoke.py](src/features/karaoke/scripts/karaoke.py):
-
-1. **Скачую** кліп у 720p (`yt-dlp`).
-2. **Відділяю голос** від музики (`audio-separator`, ~1 хв на нову пісню).
-3. **Розпізнаю спів**: слухаю голос Whisper-ом: мова пісні й розпізнаний текст.
-4. **Шукаю текст** на [LRCLIB](https://lrclib.net) за виконавцем і назвою тією ж мовою й звіряю з розпізнаним. Якщо тексту немає або він не збігається зі співом, бот пропонує дві кнопки: «✍️ Надішлю текст сам» (наступне повідомлення з кількох рядків стане текстом) або «🤖 Зробити з розпізнаного» (бот ще й надішле розпізнаний текст — виправте й надішліть, і він переробить).
-5. **Підганяю слова під спів**: синхронізую кожне слово з голосом (`ctc-forced-aligner`).
-6. **Збираю відео**: великий текст з обводкою на трохи затемненому кліпі, два рядки, слова заповнюються в такт, відлік 3‑2‑1 перед першим рядком і після довгих пауз, маркер перед фразою (`ffmpeg` + `libass`).
-7. **Заливаю на YouTube** і надсилаю назву з посиланням (див. нижче).
-
-Пісня називається, як книжка: «Виконавець - Назва», а якщо їх не видно — назва відео з YouTube. Відео підписані, як кнопки: «(Караоке)» — лише музика, «(Вокал)» — з голосом; для англійських пісень «(Karaoke)» / «(Vocals)». Повторне посилання на той самий кліп бере вже готові кроки, тож друга версія після першої робиться за ~40 с.
-
-```
-data/karaoke/<виконавець> - <назва>/
-  clip.mp4, stems/, meta.json, listen.json, lyrics.json, aligned.json, karaoke.ass
-  мій текст.txt                             ← текст, який ви надіслали; береться й наступного разу, можна правити
-  <виконавець> - <назва> (Караоке).mp4            ← лише музика
-  <виконавець> - <назва> (Вокал).mp4              ← з голосом
-  <...> (HQ).mp4                                  ← повна якість, якщо для Telegram довелося стиснути
-```
-
-### YouTube
-
-Кожне готове караоке бот у повній якості заливає на канал з доступом «за посиланням» (крок 7/7), додає в караоке-плейлист і надсилає в Telegram назву й посилання, без самого відео ([youtube.ts](src/features/karaoke/youtube.ts)). Якщо залити не вдалося, бот пише чому й надсилає відео. Переробили ту саму версію пісні — стара копія на YouTube видаляється. Потрібні `GOOGLE_CLIENT_ID` і `GOOGLE_CLIENT_SECRET` у `.env` (OAuth-клієнт типу «TVs and Limited Input devices» з доступом до YouTube Data API v3); без них бот нічого не заливає.
-
-Застосунок у Google у статусі «Testing», тож вхід живе 7 днів: коли він протух, бот надсилає код для google.com/device — введіть його з будь-якого пристрою, і заливка продовжиться. Вхід і список залитих відео лежать у `data/youtube.json`.
-
-Тести Python-частини: `uv run pytest src/features/karaoke`.
-
-## Семпл
-
-`npm run sample -- "Жуль Верн - Діти капітана Гранта" 150` бере EPUB з папки `data/audiobook/Жуль Верн - Діти капітана Гранта/` і озвучує перші 150 слів кожним голосом поточного `TTS_PROVIDER` у `data/voice-samples/<провайдер>/<голос>.mp3`. У `data/voice-samples/<провайдер>/all/` лежать проби всіх голосів, з яких обирали.
-
-Тести Python-частини: `uv run pytest src/features/audiobook`.
-
-## Ліміти Telegram
-
-- EPUB до 20 МБ (бот більший файл не скачає).
-- Аудіо до 50 МБ (≈100 хв при 64 kbps): розділ довший за 90 хвилин приходить частинами `001 Назва (1)`, `001 Назва (2)`.
-- Відео караоке до 50 МБ: довгий кліп стискається сильніше; якщо надіслати не вдалося, бот пише шлях до файлу на Mac.
+How each feature works inside: [docs/how-it-works.md](docs/how-it-works.md).
