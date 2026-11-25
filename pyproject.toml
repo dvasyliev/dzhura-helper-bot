@@ -2,17 +2,16 @@
 name = "audiobook-bot"
 version = "0.1.0"
 description = "Local Ukrainian TTS (HolosTTS) for the audiobook bot"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.15"
 dependencies = [
+    "accentuk==0.3.3",
     "holos-tts-mlx>=0.1",
     "ipa-uk",
     "lameenc>=1.9.0",
     "num2words>=0.5.14",
     "numpy>=2.4.6",
     "requests>=2.34.2",
-    "ukrainian-word-stress",
 ]
 
 [tool.uv.sources]
-ukrainian-word-stress = { git = "https://github.com/patriotyk/ukrainian-word-stress.git" }
 ipa-uk = { git = "https://github.com/patriotyk/ipa-uk.git" }

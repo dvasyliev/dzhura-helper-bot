@@ -2,14 +2,17 @@ import JSZip from "jszip";
 import { parse } from "node-html-parser";
 import path from "node:path/posix";
 
-export type Book = { title: string; chapters: { title: string; text: string }[] };
+export type Book = { title: string; author?: string; chapters: { title: string; text: string }[] };
 
 /** Spine items with less text than this are treated as covers, copyright pages and so on. */
 const MIN_CHAPTER_CHARS = 200;
+/** A chapter not in the table of contents is named by its first line if it is this short. */
+const MAX_TITLE_CHARS = 80;
 
 const BLOCK_END = /<\/(p|div|h[1-6]|li|blockquote|section|article|tr)>|<br\s*\/?>/gi;
 
-export async function parseEpub(data: Buffer): Promise<Book> {
+/** `fileName` names the book when the EPUB has no title. */
+export async function parseEpub(data: Buffer, fileName = "Книжка"): Promise<Book> {
   const zip = await JSZip.loadAsync(data);
   const read = async (file: string) => {
     const entry = zip.file(file);
@@ -39,29 +42,40 @@ export async function parseEpub(data: Buffer): Promise<Book> {
     .map((item) => item!.href);
 
   const toc = await readToc([...manifest.values()], read);
-  const bookTitle = decode(opf.match(/<dc:title[^>]*>([\s\S]*?)<\/dc:title>/i)?.[1] ?? "") || "Книжка";
+  const meta = (tag: string) => clean(decode(opf.match(new RegExp(`<dc:${tag}[^>]*>([\\s\\S]*?)</dc:${tag}>`, "i"))?.[1] ?? ""));
+  const bookTitle = meta("title") || fileName.replace(/\.epub$/i, "").replace(/_/g, " ");
 
   const chapters: Book["chapters"] = [];
+  let carried: string[] = []; // a short titled section («Частина друга») is read at the start of the next chapter
   for (const href of spine) {
     const html = await read(href);
-    const text = htmlToText(html);
-    if (text.length < MIN_CHAPTER_CHARS) continue;
-    const heading = parse(html).querySelector("h1, h2, h3")?.text.trim();
-    const title = toc.get(href) || heading || `Розділ ${chapters.length + 1}`;
-    chapters.push({ title: clean(title), text });
+    const entries = toc.filter((e) => e.file === href);
+    for (const section of sections(html, entries)) {
+      const lines = [...carried, ...section.lines];
+      if (lines.join("\n").length < MIN_CHAPTER_CHARS) {
+        if (section.title) carried = lines;
+        continue;
+      }
+      carried = [];
+      const firstLine = section.lines[0].length <= MAX_TITLE_CHARS ? section.lines[0] : undefined;
+      const title = section.title || firstLine || `Розділ ${chapters.length + 1}`;
+      chapters.push({ title: clean(title), text: lines.join("\n") });
+    }
   }
-  return { title: clean(bookTitle), chapters };
+  return { title: clean(bookTitle), author: meta("creator") || undefined, chapters };
 }
 
-/** Map of chapter file path → title, from nav.xhtml (EPUB 3) or toc.ncx (EPUB 2). */
+type TocEntry = { file: string; anchor: string; title: string };
+
+/** Table of contents in reading order, from nav.xhtml (EPUB 3) or toc.ncx (EPUB 2). */
 async function readToc(
   items: { href: string; type: string; props: string }[],
   read: (file: string) => Promise<string>,
-): Promise<Map<string, string>> {
-  const toc = new Map<string, string>();
+): Promise<TocEntry[]> {
+  const toc: TocEntry[] = [];
   const add = (base: string, href: string, title: string) => {
-    const file = path.join(path.dirname(base), decodeURIComponent(href.split("#")[0]));
-    if (title.trim() && !toc.has(file)) toc.set(file, title.trim());
+    const [file, anchor = ""] = decodeURIComponent(href).split("#");
+    if (title.trim()) toc.push({ file: path.join(path.dirname(base), file), anchor, title: title.trim() });
   };
 
   const nav = items.find((i) => i.props.split(" ").includes("nav"));
@@ -69,7 +83,7 @@ async function readToc(
     const root = parse(await read(nav.href));
     const tocNav = root.querySelectorAll("nav").find((n) => n.getAttribute("epub:type") === "toc") ?? root;
     for (const a of tocNav.querySelectorAll("a[href]")) add(nav.href, a.getAttribute("href")!, a.text);
-    if (toc.size) return toc;
+    if (toc.length) return toc;
   }
 
   const ncx = items.find((i) => i.type === "application/x-dtbncx+xml");
@@ -79,6 +93,34 @@ async function readToc(
     for (const m of xml.matchAll(point)) add(ncx.href, m[2], decode(m[1]));
   }
   return toc;
+}
+
+const MARK = "\u0001";
+
+/**
+ * A spine file cut where its table of contents entries point: one file often holds several chapters.
+ * Text before the first anchor (or of a file with no entries) gets the title of an entry with no
+ * anchor in this file, if any.
+ */
+function sections(html: string, entries: TocEntry[]): { title?: string; lines: string[] }[] {
+  const marks: { at: number; entry: number }[] = [];
+  entries.forEach((e, entry) => {
+    const at = e.anchor ? html.search(new RegExp(`<[a-z][^>]*\\bid=["']${escapeRegExp(e.anchor)}["']`, "i")) : -1;
+    if (at >= 0) marks.push({ at, entry });
+  });
+  for (const { at, entry } of marks.sort((a, b) => b.at - a.at)) html = `${html.slice(0, at)}<p>${MARK}${entry}</p>${html.slice(at)}`;
+
+  const first = entries.find((_, i) => !marks.some((m) => m.entry === i));
+  const result: { title?: string; lines: string[] }[] = [{ title: first?.title, lines: [] }];
+  for (const line of htmlToText(html).split("\n")) {
+    if (line.startsWith(MARK)) result.push({ title: entries[Number(line.slice(1))].title, lines: [] });
+    else result.at(-1)!.lines.push(line);
+  }
+  return result;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function htmlToText(html: string): string {

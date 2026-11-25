@@ -6,7 +6,12 @@ const LONG = "Це довгий абзац тексту книжки. ".repeat(1
 
 type Item = { id: string; href: string; body: string };
 
-async function buildEpub(opts: { items: Item[]; nav?: Record<string, string>; ncx?: Record<string, string> }) {
+async function buildEpub(opts: {
+  items: Item[];
+  nav?: Record<string, string>;
+  ncx?: Record<string, string>;
+  metadata?: string;
+}) {
   const zip = new JSZip();
   zip.file(
     "META-INF/container.xml",
@@ -17,7 +22,7 @@ async function buildEpub(opts: { items: Item[]; nav?: Record<string, string>; nc
   if (opts.ncx) manifest.push(`<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>`);
   zip.file(
     "OEBPS/content.opf",
-    `<?xml version="1.0"?><package><metadata><dc:title>Моя книжка</dc:title></metadata>
+    `<?xml version="1.0"?><package><metadata>${opts.metadata ?? "<dc:title>Моя книжка</dc:title>"}</metadata>
      <manifest>${manifest.join("")}</manifest>
      <spine>${opts.items.map((i) => `<itemref idref="${i.id}"/>`).join("")}</spine></package>`,
   );
@@ -51,6 +56,14 @@ describe("parseEpub", () => {
     expect(book.chapters.map((c) => c.title)).toEqual(["Перший", "Другий", "Третій"]);
   });
 
+  it("reads the author, and names a book without a title by its file name", async () => {
+    const items = [{ id: "a", href: "a.xhtml", body: `<p>${LONG}</p>` }];
+    const withAuthor = await buildEpub({ items, metadata: "<dc:title>Кобзар</dc:title><dc:creator>Тарас Шевченко</dc:creator>" });
+    expect(await parseEpub(withAuthor, "x.epub")).toMatchObject({ title: "Кобзар", author: "Тарас Шевченко" });
+    const untitled = await parseEpub(await buildEpub({ items, metadata: "" }), "Шевченко_Кобзар.epub");
+    expect(untitled).toMatchObject({ title: "Шевченко Кобзар", author: undefined });
+  });
+
   it("takes chapter titles from toc.ncx when there is no nav", async () => {
     const book = await parseEpub(
       await buildEpub({
@@ -61,7 +74,7 @@ describe("parseEpub", () => {
     expect(book.chapters.map((c) => c.title)).toEqual(["Глава з NCX"]);
   });
 
-  it("falls back to the first heading, then to «Розділ N»", async () => {
+  it("falls back to a short first line, then to «Розділ N»", async () => {
     const book = await parseEpub(
       await buildEpub({
         items: [
@@ -71,6 +84,24 @@ describe("parseEpub", () => {
       }),
     );
     expect(book.chapters.map((c) => c.title)).toEqual(["Пролог", "Розділ 2"]);
+  });
+
+  it("cuts a file at its table of contents anchors and reads a part title with the next chapter", async () => {
+    const book = await parseEpub(
+      await buildEpub({
+        items: [
+          {
+            id: "a",
+            href: "a.xhtml",
+            body: `<div id="p1"><p>Частина друга</p></div><span id="c1"><p>Розділ I. Риба</p><p>${LONG}</p></span><span id="c2"><p>Розділ II. Пляшка</p><p>${LONG}</p></span>`,
+          },
+        ],
+        ncx: { "a.xhtml#p1": "Частина друга", "a.xhtml#c1": "Розділ I. Риба", "a.xhtml#c2": "Розділ II. Пляшка" },
+      }),
+    );
+    expect(book.chapters.map((c) => c.title)).toEqual(["Розділ I. Риба", "Розділ II. Пляшка"]);
+    expect(book.chapters[0].text.startsWith("Частина друга\nРозділ I. Риба\nЦе довгий")).toBe(true);
+    expect(book.chapters[1].text.startsWith("Розділ II. Пляшка\n")).toBe(true);
   });
 
   it("skips near-empty items such as the cover", async () => {

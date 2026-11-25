@@ -59,9 +59,9 @@ def synthesize(text: str, voice: str) -> bytes:
     raise last
 
 
-def make(stressify):
-    def voice_chapter(text: str, voice: str, prefix: str) -> list[str]:
-        chunks = pack(split_sentences(to_fish_text(stressify(text))), MAX_CHUNK_CHARS)
+def make():
+    def voice_chapter(text: str, voice: str) -> list[bytes]:
+        chunks = pack(split_sentences(to_fish_text(text)), MAX_CHUNK_CHARS)
         with ThreadPoolExecutor(PARALLEL_CHUNKS) as pool:
             audio = list(pool.map(lambda chunk: synthesize(chunk, voice), chunks))
         parts: list[bytes] = []
@@ -70,11 +70,6 @@ def make(stressify):
                 parts[-1] += piece
             else:
                 parts.append(piece)
-        files = []
-        for p, part in enumerate(parts):
-            files.append(f"{prefix}-{p}.mp3")
-            with open(files[-1], "wb") as f:
-                f.write(part)
-        return files
+        return parts
 
     return voice_chapter

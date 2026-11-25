@@ -1,4 +1,4 @@
-"""Run: cd scripts/audiobook && uv run python test_numbers.py"""
+"""Run: cd src/features/audiobook/scripts && uv run python test_numbers.py"""
 
 from numbers_uk import numbers_to_words
 

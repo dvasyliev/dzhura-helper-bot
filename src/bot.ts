@@ -14,7 +14,7 @@ export function createBot(): Bot {
   void bot.api
     .setMyCommands([
       { command: "menu", description: "Що вміє бот" },
-      ...FEATURES.map((f) => ({ command: f.id, description: label(f) })),
+      ...FEATURES.flatMap((f) => [{ command: f.id, description: label(f) }, ...(f.commands ?? [])]),
     ])
     .catch((error) => console.error("setMyCommands failed:", error));
 
@@ -40,6 +40,7 @@ export function createBot(): Bot {
 const NOT_READY = "Цієї функції ще немає, вона в розробці.";
 
 function open(ctx: Context, feature: Feature) {
+  if (feature.composer && feature.open) return feature.open(ctx);
   return ctx.reply(feature.composer ? (feature.hint ?? feature.title) : NOT_READY);
 }
 

@@ -6,6 +6,10 @@ export type Feature = {
   title: string;
   /** What to send to use it; shown when its menu button is pressed. Omit for features not built yet. */
   hint?: string;
+  /** Replaces `hint` when the reply needs more than text, e.g. buttons. */
+  open?: (ctx: Context) => Promise<unknown>;
+  /** Extra commands for the Telegram «Menu» list; their handlers live in `composer`. */
+  commands?: { command: string; description: string }[];
   /** Handlers for the feature's messages and buttons. */
   composer?: Composer<Context>;
 };
