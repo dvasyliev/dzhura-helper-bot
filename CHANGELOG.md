@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 (2026-11-26)
+
+### Features
+
+- check chunks and find glossary terms in Python (bddb0c8)
+
 ## 0.2.0 (2026-11-25)
 
 ### Features
