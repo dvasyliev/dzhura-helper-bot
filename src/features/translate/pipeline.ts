@@ -28,8 +28,6 @@ import {
   paragraphFixInput,
   problemParagraphs,
 } from "./fix.ts";
-import { describeAllParts, partsOf } from "../audiobook/parts.ts";
-import { chapters } from "../audiobook/library.ts";
 import { LimitError, runClaude, type Usage } from "./claude.ts";
 import { LANGUAGE, langFile, termMatch, type TermMatch } from "./lang.ts";
 import {
@@ -431,12 +429,6 @@ export async function translateBook(
   const epub = (await pandoc(md, epubFile, opts.cover)) ? epubFile : undefined;
 
   const result = parseMarkdown(text);
-  // A failure here never fails the translation: a part without a description just shows none.
-  await describeAllParts(dir, partsOf(chapters(result)), {
-    run,
-    onUsage: addUsage,
-  }).catch((error) => console.error("Descriptions failed:", error));
-
   await savingUsage;
   return {
     book: result,

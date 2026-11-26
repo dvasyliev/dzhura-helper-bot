@@ -3,8 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Book } from "../book/epub.ts";
 import type { CheckInput, Problem } from "./check.ts";
-import { LimitError, type Usage } from "./claude.ts";
-import { paragraphs } from "./chunks.ts";
+import { LimitError } from "./claude.ts";
 import { translateBook, translateMinutes } from "./pipeline.ts";
 import {
   book,
@@ -18,53 +17,6 @@ import {
 } from "./pipeline.testing.ts";
 
 describe("translateBook", () => {
-  it("describes the parts of the translated book and adds the usage", async () => {
-    const { dir, opts } = await setup();
-    const { run } = fakeRun((s) =>
-      paragraphs(s)
-        .map((p) => (p.startsWith("# ") ? "# Розділ" : "слово ".repeat(100)))
-        .join("\n\n"),
-    );
-    const used = {
-      calls: 1,
-      input: 5,
-      output: 5,
-      cacheWrite: 0,
-      cacheRead: 0,
-      costUsd: 0.5,
-    };
-    const withDescriptions = vi.fn(
-      async (prompt: string, input: string, onUsage?: (u: Usage) => void) => {
-        if (!prompt.endsWith("part-prompt.md")) return run(prompt, input);
-        onUsage?.(used);
-        return "Опис.";
-      },
-    );
-    const result = await translateBook(book, {
-      ...opts,
-      run: withDescriptions,
-    });
-    const saved = JSON.parse(await readFile(join(dir, "parts.json"), "utf8"));
-    expect(Object.values(saved).length).toBeGreaterThan(0);
-    expect(Object.values(saved)).toEqual(
-      Object.values(saved).map(() => "Опис."),
-    );
-    expect(result.usage.costUsd).toBeCloseTo(0.5 * Object.keys(saved).length);
-    expect(result.usage.costUsd).toBeGreaterThan(0);
-  });
-
-  it("does not fail the translation when describing fails", async () => {
-    const { opts } = await setup();
-    const { run } = fakeRun();
-    const failing = vi.fn(async (prompt: string, input: string) => {
-      if (prompt.endsWith("part-prompt.md")) throw new Error("boom");
-      return run(prompt, input);
-    });
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const result = await translateBook(book, { ...opts, run: failing });
-    expect(result.book.chapters).toHaveLength(2);
-  });
-
   it("translates a two-chapter book", async () => {
     const { dir, opts, progress } = await setup();
     const { run } = fakeRun();

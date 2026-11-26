@@ -10,16 +10,11 @@ import {
   safeFilename,
   translationFolder,
 } from "../audiobook/text.ts";
-import {
-  partMessage,
-  partsOf,
-  readParts,
-  partKey,
-  audioTitle,
-} from "../audiobook/parts.ts";
+import { partMessage, partsOf, audioTitle } from "../audiobook/parts.ts";
 import { bookCaption } from "../book/caption.ts";
 import type { Book } from "../book/epub.ts";
 import { readInfo } from "../book/info.ts";
+import { coverThumbnail } from "./thumbnail.ts";
 import { BOOK_MD, parseMarkdown } from "../book/markdown.ts";
 import { bold, escape } from "../../format.ts";
 import { SOURCE_MD } from "../translate/pipeline.ts";
@@ -182,6 +177,7 @@ export async function bookItems(
   const cover = info?.cover
     ? await fileItem("contents", "photo", info.cover, { caption, pin: true })
     : undefined;
+  const thumbnail = info?.cover && (await coverThumbnail(info.cover));
 
   const items: Item[] = [
     cover ?? { key: "contents", kind: "text", text: caption, pin: true },
@@ -194,7 +190,6 @@ export async function bookItems(
       kind: "text",
       text: `🎧 ${bold(escape(voice.name))}`,
     });
-    const descriptions = await readParts(voice.root);
     const files = new Map<string, string[]>();
     for (const file of voice.files) {
       const name = chapterPart(file)!.chapter;
@@ -206,7 +201,7 @@ export async function bookItems(
       items.push({
         key: `part:${voice.name}/${part.number}`,
         kind: "text",
-        text: partMessage(part, descriptions[partKey(part)]),
+        text: partMessage(part),
       });
       for (const track of voicedTracks)
         for (const file of files.get(track.name)!) {
@@ -216,6 +211,7 @@ export async function bookItems(
             path.join(voice.dir, file),
             {
               title: audioTitle(track, file),
+              ...(thumbnail ? { thumbnail } : {}),
             },
           );
           if (item) items.push(item);

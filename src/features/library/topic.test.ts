@@ -128,6 +128,40 @@ describe("syncTopic", () => {
     );
   });
 
+  it("uploads an audio again with the cover thumbnail once it has one", async () => {
+    const state: LibraryState = {
+      chatId: CHAT,
+      topics: {
+        book: {
+          threadId: 5,
+          messages: [posted("a", 10, audio("a"))],
+          tooBig: {},
+        },
+      },
+    };
+    await sync(state, [audio("a", { thumbnail: "/books/thumb.jpg" })]);
+
+    const [, , media] = t.api.editMessageMedia.mock.calls[0] as unknown as [
+      number,
+      number,
+      { media: unknown; thumbnail: unknown },
+    ];
+    expect(media.media).toBeInstanceOf(InputFile);
+    expect(media.thumbnail).toBeInstanceOf(InputFile);
+  });
+
+  it("sends a new audio with the cover thumbnail", async () => {
+    const state: LibraryState = { chatId: CHAT, topics: {} };
+    await sync(state, [audio("a", { thumbnail: "/books/thumb.jpg" })]);
+
+    const [, , options] = t.api.sendAudio.mock.calls[0] as unknown as [
+      number,
+      InputFile,
+      { thumbnail: unknown },
+    ];
+    expect(options.thumbnail).toBeInstanceOf(InputFile);
+  });
+
   it("re-sends the tail by file_id", async () => {
     const a = audio("a");
     const c = audio("c");

@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { Context } from "grammy";
 import type { ChatMember } from "grammy/types";
 import type { Api } from "grammy";
+import { loadBook } from "../audiobook/library.ts";
+import { bookInfo } from "../book/info.ts";
 import { bookFolders, syncBook } from "./books.ts";
 import {
   keepsTopics,
@@ -14,14 +16,16 @@ import {
   publish,
 } from "./index.ts";
 import { loadState, saveState } from "./state.ts";
-import { describeShelf } from "./describe.ts";
 import { syncKaraoke } from "./karaoke.ts";
 import type { Synced } from "./topic.ts";
 
 vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
 vi.mock("./books.ts", () => ({ bookFolders: vi.fn(), syncBook: vi.fn() }));
-vi.mock("./describe.ts", () => ({ describeShelf: vi.fn(async () => {}) }));
 vi.mock("./karaoke.ts", () => ({ syncKaraoke: vi.fn() }));
+vi.mock("../audiobook/library.ts", () => ({
+  loadBook: vi.fn(async () => undefined),
+}));
+vi.mock("../book/info.ts", () => ({ bookInfo: vi.fn(async () => ({})) }));
 
 const user = { id: 1, is_bot: true, first_name: "bot" };
 const admin = {
@@ -100,27 +104,6 @@ describe("publish", () => {
     );
   });
 
-  it("describes the voiced tracks before syncing, with the status callback", async () => {
-    const order: string[] = [];
-    vi.mocked(describeShelf).mockImplementationOnce(async () => {
-      order.push("describe");
-    });
-    vi.mocked(bookFolders).mockResolvedValue(["A"]);
-    vi.mocked(syncBook).mockImplementation(async () => {
-      order.push("sync");
-      return done;
-    });
-    vi.mocked(syncKaraoke).mockResolvedValue(done);
-    const show = async () => {};
-    await publish(
-      api,
-      vi.fn(async () => undefined),
-      show,
-    );
-    expect(describeShelf).toHaveBeenLastCalledWith(show);
-    expect(order).toEqual(["describe", "sync"]);
-  });
-
   it("probes every topic and says how many are up to date", async () => {
     vi.mocked(bookFolders).mockResolvedValue(["A"]);
     vi.mocked(syncBook).mockResolvedValue(done);
@@ -134,6 +117,30 @@ describe("publish", () => {
     expect(reply).toHaveBeenCalledWith(
       "✅ <b>Library is up to date</b>\n\n<blockquote>2 topics</blockquote>",
     );
+  });
+
+  it("first makes each book's missing info (cover, year, description), then syncs", async () => {
+    const order: string[] = [];
+    const book = { title: "A", chapters: [] };
+    vi.mocked(bookFolders).mockResolvedValue(["A"]);
+    vi.mocked(loadBook).mockResolvedValue(book as never);
+    vi.mocked(bookInfo).mockImplementationOnce(async () => {
+      order.push("info");
+      return {};
+    });
+    vi.mocked(syncBook).mockImplementation(async () => {
+      order.push("sync");
+      return done;
+    });
+    vi.mocked(syncKaraoke).mockResolvedValue(done);
+    await publish(
+      api,
+      vi.fn(async () => undefined),
+    );
+    expect(bookInfo).toHaveBeenCalledWith("A", book, {
+      waitMs: 2 ** 31 - 1,
+    });
+    expect(order).toEqual(["info", "sync"]);
   });
 });
 

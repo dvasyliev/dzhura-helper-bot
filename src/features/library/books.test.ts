@@ -14,6 +14,9 @@ import { resetUnavailable } from "./group.ts";
 import { saveState } from "./state.ts";
 
 vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
+vi.mock("./thumbnail.ts", () => ({
+  coverThumbnail: async (cover: string) => `${cover}.thumb.jpg`,
+}));
 
 const ENGLISH = "The man and the dog went to the sea with his friend.";
 const UKRAINIAN = "Чоловік і пес пішли до моря зі своїм другом.";
@@ -154,25 +157,14 @@ describe("bookItems", () => {
   });
 });
 
-describe("bookItems with part descriptions", () => {
-  it("puts the part message, with its description when there is one, before the part's audio", async () => {
+describe("bookItems with parts", () => {
+  it("puts the part message with its chapter titles before the part's audio", async () => {
     await translatedBook();
-    let items = await bookItems("Orig", dirs);
+    const items = await bookItems("Orig", dirs);
     expect(items.find((i) => i.key === "part:Kokoro/1")).toMatchObject({
       kind: "text",
-      text: "🎧 <b>Part 1</b> · tracks 1–2 · ≈14 min",
+      text: "🎧 <b>Part 1</b> · tracks 1–2 · ≈14 min\n\n• One\n• Two",
     });
-    await put(
-      "books/Orig/parts.json",
-      JSON.stringify({ "001 One|002 Two": "Про <щось>." }),
-    );
-    items = await bookItems("Orig", dirs);
-    expect(items.find((i) => i.key === "part:Kokoro/1")).toMatchObject({
-      text: "🎧 <b>Part 1</b> · tracks 1–2 · ≈14 min\n\nПро &lt;щось&gt;.",
-    });
-    expect(
-      (items.find((i) => i.key === "part:Holos/1") as { text: string }).text,
-    ).not.toContain("Про");
   });
 });
 
@@ -209,6 +201,20 @@ describe("bookItems with a cover", () => {
         "Про щось.",
       ].join("\n"),
     );
+  });
+
+  it("gives every audio the cover's thumbnail as album art", async () => {
+    await translatedBook();
+    await put("books/Orig/cover.jpg", "image");
+    await put("books/Orig/info.json", JSON.stringify({ cover: "cover.jpg" }));
+    const audios = (await bookItems("Orig", dirs)).filter(
+      (i) => i.kind === "audio",
+    );
+    expect(audios.length).toBeGreaterThan(0);
+    for (const audio of audios)
+      expect(audio).toMatchObject({
+        thumbnail: join(dirs.books, "Orig", "cover.jpg.thumb.jpg"),
+      });
   });
 });
 

@@ -3,9 +3,10 @@ import type { Chat, ChatMember } from "grammy/types";
 import { config } from "../../config.ts";
 import { busyHtml, startJob } from "../../jobs.ts";
 import { bold, escape, HTML, problem, quote } from "../../format.ts";
+import { loadBook } from "../audiobook/library.ts";
+import { bookInfo } from "../book/info.ts";
 import { bookFolders, syncBook } from "./books.ts";
 import { resetUnavailable } from "./group.ts";
-import { describeShelf } from "./describe.ts";
 import { syncKaraoke } from "./karaoke.ts";
 import {
   LIBRARY_FILE,
@@ -47,19 +48,22 @@ export async function privateOnly(
 
 const STOPPED = `⚠️ ${bold("Publishing stopped")}\nThe library group is unavailable.`;
 
+/** setTimeout's longest wait: the info is waited for to the end. */
+const NO_LIMIT = 2 ** 31 - 1;
+
 /**
- * First makes the missing chapter descriptions, with one status message for `show` to send and then edit; then syncs
- * every topic, checking each still exists, and replies how it went.
+ * First makes each book's missing info (cover, year, description; see bookInfo), so its topic shows the cover; then
+ * syncs every topic, checking each still exists, and replies how it went.
  */
 export async function publish(
   api: Api,
   reply: (text: string) => Promise<unknown>,
-  show: (text: string) => Promise<void> = async () => {},
 ): Promise<void> {
-  await describeShelf(show).catch((error) =>
-    console.error("Descriptions failed:", error),
-  );
   const folders = await bookFolders();
+  for (const folder of folders) {
+    const book = await loadBook(folder).catch(() => undefined);
+    if (book) await bookInfo(folder, book, { waitMs: NO_LIMIT });
+  }
   const synced = async (): Promise<boolean> => {
     for (const folder of folders)
       if (!(await syncBook(api, folder, undefined, { probe: true })))
@@ -122,18 +126,7 @@ library.command("publish", async (ctx) => {
     );
   const started = startJob(
     "publishing the library",
-    () => {
-      let status: number | undefined;
-      const show = async (text: string) => {
-        if (status === undefined)
-          status = (await ctx.reply(text, HTML)).message_id;
-        else
-          await ctx.api
-            .editMessageText(ctx.chat.id, status, text, HTML)
-            .catch(() => {}); // Telegram refuses an edit that changes nothing
-      };
-      return publish(ctx.api, (text) => ctx.reply(text, HTML), show);
-    },
+    () => publish(ctx.api, (text) => ctx.reply(text, HTML)),
     async (error) => {
       await ctx.reply(
         `⚠️ ${bold("Publishing failed")}\n${problem(error)}`,

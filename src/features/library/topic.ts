@@ -84,6 +84,9 @@ function mediaOptions(item: FileItem) {
   return {
     ...(item.caption === undefined ? {} : { ...HTML, caption: item.caption }),
     ...(item.kind === "audio" ? { title: item.title } : {}),
+    ...(item.kind === "audio" && item.thumbnail
+      ? { thumbnail: new InputFile(item.thumbnail) }
+      : {}),
     ...(item.kind === "video" && item.video
       ? { ...item.video, supports_streaming: true }
       : {}),

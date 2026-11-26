@@ -10,6 +10,8 @@ export type FileItem = {
   /** Telegram HTML. */
   caption?: string;
   title?: string;
+  /** A small JPEG shown as an audio's album art. */
+  thumbnail?: string;
   video?: { duration: number; width: number; height: number };
   /** Pinned when sent. */
   pin?: boolean;
@@ -42,10 +44,11 @@ export function version(item: Item): string {
   return `${fileVersion(item)}${item.caption ?? ""}`;
 }
 
-/** The part of a file's version that changes when the file must be sent again: its content and audio title. */
+/** The part of a file's version that changes when the file must be sent again: its content, audio title and thumbnail. */
 export function fileVersion(item: FileItem): string {
   const title = item.title === undefined ? "" : `${item.title}\n`;
-  return `${item.size}:${item.mtime}:${title}`;
+  const thumbnail = item.thumbnail === undefined ? "" : "thumbnail\n";
+  return `${item.size}:${item.mtime}:${title}${thumbnail}`;
 }
 
 /**

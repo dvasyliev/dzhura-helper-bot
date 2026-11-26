@@ -10,16 +10,8 @@ import {
 } from "./library.ts";
 import { leftByPace, leftText } from "../../eta.ts";
 import { HTML, bold, code, escape, problem } from "../../format.ts";
-import {
-  describeParts,
-  partMessage,
-  partsOf,
-  readParts,
-  partKey,
-  audioTitle,
-  type Part,
-} from "./parts.ts";
-import { BOOKS_DIR, bookPaths, voicingMinutes } from "./text.ts";
+import { partMessage, partsOf, audioTitle, type Part } from "./parts.ts";
+import { bookPaths, voicingMinutes } from "./text.ts";
 import { voiceChapters, type Voice } from "./voice.ts";
 
 /**
@@ -48,7 +40,6 @@ export async function voiceBook(
   };
   /** Voiced and not sent yet. */
   const waiting: { chapter: Chapter; files: string[] }[] = [];
-  const dir = `${BOOKS_DIR}/${folder}`;
   const parts = partsOf(bookChapters(book));
   const partOf = (chapter: Chapter) =>
     parts.find((p) => p.tracks.some((t) => t.index === chapter.index))!;
@@ -61,13 +52,6 @@ export async function voiceBook(
       return last.length ? [last.at(-1)!.index] : [];
     }),
   );
-  // Made in the background while the chapters are voiced; a part goes out with its description if ready.
-  const described = describeParts(
-    dir,
-    parts.filter((p) =>
-      p.tracks.some((t) => todo.some((c) => c.index === t.index)),
-    ),
-  );
   /** Parts whose message is already in the private chat. */
   const announced = new Set<number>();
   let sentAny = false;
@@ -79,19 +63,9 @@ export async function voiceBook(
     const batch = waiting.splice(0);
     if (!batch.length) return;
     sentAny = true;
-    const touched = new Set(batch.map((w) => partOf(w.chapter)));
-    await Promise.all([...touched].map(described));
     const synced = await syncBook(api, folder);
     if (!synced)
-      await sendParts(
-        api,
-        chatId,
-        batch,
-        partOf,
-        announced,
-        paths.audioDir,
-        dir,
-      );
+      await sendParts(api, chatId, batch, partOf, announced, paths.audioDir);
     else if (!linked) linked = await sendDone(api, chatId, synced);
   };
   try {
@@ -193,9 +167,7 @@ async function sendParts(
   partOf: (chapter: Chapter) => Part,
   announced: Set<number>,
   audioDir: string,
-  dir: string,
 ): Promise<void> {
-  const descriptions = await readParts(dir);
   const groups = new Map<Part, typeof batch>();
   for (const item of batch) {
     const part = partOf(item.chapter);
@@ -204,7 +176,7 @@ async function sendParts(
   for (const [part, items] of groups) {
     if (!announced.has(part.number)) {
       announced.add(part.number);
-      await notify(api, chatId, partMessage(part, descriptions[partKey(part)]));
+      await notify(api, chatId, partMessage(part));
     }
     const audio = items.flatMap(({ chapter, files }) =>
       files.map((file) => ({ kind: "audio", file, chapter })),

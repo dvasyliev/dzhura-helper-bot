@@ -6,17 +6,9 @@ import { voiceBook } from "./deliver.ts";
 import { voiceChapters, type Voice, type VoiceEvent } from "./voice.ts";
 
 vi.mock("./voice.ts", () => ({ voiceChapters: vi.fn() }));
-vi.mock("../translate/claude.ts", () => ({
-  runClaude: vi.fn(async () => "Про розділ."),
-}));
 /** The book's tracks, as `chapters(book)` returns them; each test sets its own. */
 const tracks = vi.hoisted(() => ({ list: [] as unknown[] }));
 vi.mock("./library.ts", () => ({ chapters: () => tracks.list }));
-vi.mock("./parts.ts", async (original) => ({
-  ...(await original<typeof import("./parts.ts")>()),
-  describeParts: () => async () => {},
-  readParts: vi.fn(async () => ({ "001|003": "Про <море>." })),
-}));
 vi.mock("../library/books.ts", () => ({ syncBook: vi.fn() }));
 
 const book = {
@@ -142,11 +134,11 @@ describe("voiceBook", () => {
         "002. Chapter: 2",
         "003. Chapter: 3",
       ]);
-      // The part message goes once, before the first audio, with the saved description.
+      // The part message goes once, before the first audio, with the chapter titles.
       expect(api.sendMessage).toHaveBeenCalledTimes(1);
       expect(api.sendMessage).toHaveBeenCalledWith(
         5,
-        "🎧 <b>Part 1</b> · tracks 1–3 · ≈1 min\n\nПро &lt;море&gt;.",
+        "🎧 <b>Part 1</b> · tracks 1–3 · ≈1 min\n\n• Chapter: 1\n• Chapter: 2\n• Chapter: 3",
         { parse_mode: "HTML" },
       );
     }
