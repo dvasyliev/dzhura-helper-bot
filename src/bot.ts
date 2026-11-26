@@ -1,21 +1,31 @@
+import { autoRetry } from "@grammyjs/auto-retry";
 import { Bot, InlineKeyboard, type Context } from "grammy";
 import { cardFor, routeText, type Card } from "./card.ts";
 import { config } from "./config.ts";
 import { FEATURES } from "./features/index.ts";
+import {
+  PUBLISH_COMMAND,
+  library,
+  privateOnly,
+} from "./features/library/index.ts";
 import type { Feature } from "./features/types.ts";
 import { receiveBook, type Input } from "./input.ts";
 
 export function createBot(): Bot {
   const bot = new Bot(config.botToken);
+  bot.api.config.use(autoRetry({ maxDelaySeconds: 300 }));
 
   bot.use(async (ctx, next) => {
     if (ctx.from?.id === config.ownerId) await next();
   });
+  bot.use(privateOnly);
+  bot.use(library);
 
   // The «Menu» button next to the input field lists these commands.
   void bot.api
     .setMyCommands([
       { command: "menu", description: "What the bot can do" },
+      PUBLISH_COMMAND,
       ...FEATURES.flatMap((f) => [
         { command: f.id, description: label(f) },
         ...(f.commands ?? []),

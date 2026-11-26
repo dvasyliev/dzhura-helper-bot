@@ -1,5 +1,41 @@
-import { describe, expect, it } from "vitest";
+import { Context, type Api } from "grammy";
+import type { Update } from "grammy/types";
+import { describe, expect, it, vi } from "vitest";
+import { syncKaraoke } from "../library/karaoke.ts";
 import { karaoke } from "./index.ts";
+import { runKaraoke } from "./pipeline.ts";
+
+vi.mock("../../config.ts", () => ({
+  config: {
+    ownerId: 7,
+    googleClientId: "id",
+    googleClientSecret: "secret",
+    youtubePlaylistId: "list",
+  },
+}));
+vi.mock("./youtube.ts", () => ({
+  youtube: () => ({
+    publish: vi.fn(async () => ({
+      url: "https://youtu.be/x",
+      inPlaylist: false,
+    })),
+  }),
+}));
+vi.mock("../library/karaoke.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../library/karaoke.ts")>()),
+  syncKaraoke: vi.fn(async () => undefined),
+}));
+vi.mock("../../jobs.ts", () => ({
+  busyWith: vi.fn(),
+  startJob: vi.fn((_name: string, job: () => Promise<void>) => {
+    void job();
+    return true;
+  }),
+}));
+vi.mock("./pipeline.ts", () => ({
+  isSeparated: vi.fn(() => false),
+  runKaraoke: vi.fn(async function* () {}),
+}));
 
 describe("karaoke.actions", () => {
   it("offers karaoke for a YouTube video, with the version as its question", async () => {
@@ -17,5 +53,72 @@ describe("karaoke.actions", () => {
     expect(
       await karaoke.actions?.({ kind: "link", url: "https://example.com" }),
     ).toBeUndefined();
+  });
+});
+
+function fakeApi() {
+  return {
+    sendMessage: vi.fn(async (_chatId: number, _text: string) => ({
+      message_id: 1,
+    })),
+    sendChatAction: vi.fn(async () => true),
+    deleteMessage: vi.fn(async () => true),
+    editMessageText: vi.fn(async () => true),
+    answerCallbackQuery: vi.fn(async () => true),
+    editMessageReplyMarkup: vi.fn(async () => true),
+  };
+}
+
+/** The owner presses a «Make it» button in the library group. */
+async function pressMake(api: ReturnType<typeof fakeApi>, data: string) {
+  const group = { id: -1001, type: "supergroup", title: "Library" };
+  const update = {
+    update_id: 1,
+    callback_query: {
+      id: "q",
+      chat_instance: "c",
+      from: { id: 7, is_bot: false, first_name: "Owner" },
+      data,
+      message: { message_id: 9, date: 0, chat: group },
+    },
+  } as unknown as Update;
+  const ctx = new Context(update, api as unknown as Api, {} as Context["me"]);
+  await karaoke.composer!.middleware()(ctx, async () => {});
+}
+
+describe("karaoke make-it button", () => {
+  it("make-it button runs the job in the private chat", async () => {
+    const api = fakeApi();
+    await pressMake(api, "karaoke:make:dQw4w9WgXcQ:vocals");
+    expect(api.sendMessage.mock.calls[0]?.[0]).toBe(7);
+    expect(api.answerCallbackQuery).toHaveBeenCalled();
+    expect(api.editMessageReplyMarkup).not.toHaveBeenCalled();
+  });
+});
+
+describe("karaoke done message", () => {
+  it("says the video was not added to the playlist", async () => {
+    vi.mocked(runKaraoke).mockImplementationOnce(async function* () {
+      yield {
+        video: "/k/Song/Song (Karaoke).mp4",
+        full: "/k/Song/Song (Karaoke).mp4",
+        title: "Song",
+        duration: 1,
+        width: 1,
+        height: 1,
+      };
+    });
+    vi.mocked(syncKaraoke).mockResolvedValueOnce({
+      changed: [],
+      link: () => "https://t.me/c/1/2/3",
+    });
+    const api = fakeApi();
+    await pressMake(api, "karaoke:make:dQw4w9WgXcQ:music");
+    await vi.waitFor(() =>
+      expect(api.sendMessage).toHaveBeenCalledWith(
+        7,
+        "Done → https://t.me/c/1/2/3 (not added to the playlist)",
+      ),
+    );
   });
 });

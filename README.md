@@ -60,6 +60,8 @@ cp .env.example .env   # fill in BOT_TOKEN and OWNER_ID
 caffeinate -i npm start
 ```
 
+Optional: results can go to a Telegram group with a topic per book; see [the library group](docs/how-it-works.md#the-library-group).
+
 The full guide (Telegram bot, stress models, ffmpeg with libass, YouTube upload), by hand or with an agent: [SETUP.md](SETUP.md).
 
 How each feature works inside: [docs/how-it-works.md](docs/how-it-works.md).

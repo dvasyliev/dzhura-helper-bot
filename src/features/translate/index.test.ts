@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import type { Api } from "grammy";
+import { describe, expect, it, vi } from "vitest";
+import { syncBook } from "../library/books.ts";
 import { folderKey } from "./button.ts";
-import { reportText, translate } from "./index.ts";
+import { reportText, sendEpub, translate } from "./index.ts";
+
+vi.mock("../library/books.ts", () => ({ syncBook: vi.fn() }));
 
 describe("reportText", () => {
   it("names fixed parts and parts with problems", () => {
@@ -42,5 +46,45 @@ describe("translate.actions", () => {
     expect(
       await translate.actions?.({ kind: "link", url: "https://a.b" }),
     ).toBeUndefined();
+  });
+});
+
+describe("sendEpub", () => {
+  const fakeApi = () => ({
+    sendDocument: vi.fn(async () => ({})),
+    sendMessage: vi.fn(async () => ({})),
+  });
+
+  it("group exists, nothing changed → no sendDocument, Done → link", async () => {
+    vi.mocked(syncBook).mockResolvedValueOnce({
+      changed: [],
+      link: (key) => (key === "uk-epub" ? "https://t.me/c/1/2/3" : undefined),
+    });
+    const api = fakeApi();
+    await sendEpub(api as unknown as Api, 5, "Book", "/t/book.uk.epub", "A");
+    expect(syncBook).toHaveBeenCalledWith(api, "Book");
+    expect(api.sendDocument).not.toHaveBeenCalled();
+    expect(api.sendMessage).toHaveBeenCalledWith(
+      5,
+      "Done → https://t.me/c/1/2/3",
+    );
+  });
+
+  it("group exists but has no link → sends nothing", async () => {
+    vi.mocked(syncBook).mockResolvedValueOnce({
+      changed: [],
+      link: () => undefined,
+    });
+    const api = fakeApi();
+    await sendEpub(api as unknown as Api, 5, "Book", "/t/book.uk.epub", "A");
+    expect(api.sendDocument).not.toHaveBeenCalled();
+    expect(api.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("without a group sends the EPUB here", async () => {
+    vi.mocked(syncBook).mockResolvedValueOnce(undefined);
+    const api = fakeApi();
+    await sendEpub(api as unknown as Api, 5, "Book", "/t/book.uk.epub", "A");
+    expect(api.sendDocument).toHaveBeenCalledTimes(1);
   });
 });

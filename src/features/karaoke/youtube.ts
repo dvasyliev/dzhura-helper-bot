@@ -209,3 +209,11 @@ export function youtube(options: YouTubeOptions) {
     },
   };
 }
+
+/** The id of every upload by its title, from the store file; empty when it is missing. The refresh token stays inside. */
+export function uploads(storeFile: string): Record<string, string> {
+  return existsSync(storeFile)
+    ? ((JSON.parse(readFileSync(storeFile, "utf8")) as Partial<Store>).videos ??
+        {})
+    : {};
+}

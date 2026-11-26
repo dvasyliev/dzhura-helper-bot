@@ -114,7 +114,7 @@ composer.command("regen", async (ctx) => {
   const chatId = ctx.chat.id;
   const regen = async () => {
     for (const c of todo) await removeAudio(audioDir, c.name);
-    await voiceBook(ctx.api, chatId, book, voice, todo, false);
+    await voiceBook(ctx.api, chatId, book, voice, todo, "regen");
     await notify(ctx.api, chatId, "Re-voiced.");
   };
   if (
@@ -230,7 +230,7 @@ async function start(ctx: Context, book: Book, voice: Voice, todo: Chapter[]) {
   const chatId = ctx.chat!.id;
   const total = chapters(book).length;
   const voiceTodo = async () => {
-    await voiceBook(ctx.api, chatId, book, voice, todo, true);
+    await voiceBook(ctx.api, chatId, book, voice, todo, "new");
     const left = remaining(book, voice).length;
     if (!left)
       return notify(

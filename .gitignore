@@ -2,9 +2,7 @@ node_modules
 .env
 .superpowers
 data/
-docs/superpowers/reports/
-docs/superpowers/specs/
-docs/superpowers/plans/
+docs/superpowers/
 .venv
 __pycache__/
 

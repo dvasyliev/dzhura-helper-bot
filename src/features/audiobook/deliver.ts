@@ -1,55 +1,109 @@
 import { InputFile, type Api } from "grammy";
 import path from "node:path";
 import type { Book } from "../book/epub.ts";
+import { syncBook } from "../library/books.ts";
+import { hasGroup } from "../library/group.ts";
+import type { Synced } from "../library/topic.ts";
 import type { Chapter } from "./library.ts";
-import { bookName, bookPaths } from "./text.ts";
+import { bookName, bookPaths, safeFilename } from "./text.ts";
 import { voiceChapters, type Voice } from "./voice.ts";
 
-/** Voices `todo` and sends each chapter's files in reading order; a failed chapter stops the book. */
+/**
+ * Voices `todo` in reading order. With a library group the book's topic is synced and the owner gets `Done → <link>`
+ * (`"new"`: after every chapter, the link once; `"regen"`: once at the end, even after a failure); without one each
+ * chapter's files are sent here as it finishes. A failed chapter stops the book.
+ */
 export async function voiceBook(
   api: Api,
   chatId: number,
   book: Book,
   voice: Voice,
   todo: Chapter[],
-  withReport: boolean,
+  mode: "new" | "regen",
 ) {
-  const paths = bookPaths(bookName(book), voice.name);
+  const name = bookName(book);
+  const paths = bookPaths(name, voice.name);
+  const folder = safeFilename(name);
   const job = {
     voice,
     ...paths,
-    report: withReport && voice.language === "uk" ? paths.report : undefined,
+    report:
+      mode === "new" && voice.language === "uk" ? paths.report : undefined,
     chapters: todo,
   };
-  for await (const event of voiceChapters(job)) {
-    if ("report" in event) {
-      if (event.words)
-        await sendReport(
-          api,
-          chatId,
-          event.report,
-          event.words,
-          paths.dictionary,
-        );
-      continue;
-    }
-    const chapter = todo.find((c) => c.index === event.chapter)!;
-    if (event.error)
-      throw new Error(`chapter «${chapter.name}»: ${event.error}`);
-    for (const file of event.files ?? []) {
-      const name = path.basename(file, ".mp3");
-      try {
-        await api.sendAudio(chatId, new InputFile(file, `${name}.mp3`), {
-          title: name,
-          performer: book.title,
-        });
-      } catch (error) {
-        await notify(
-          api,
-          chatId,
-          `Couldn't send «${name}» (the file is in ${paths.audioDir}): ${message(error)}`,
-        );
+  const voiced: string[] = [];
+  let linked = false;
+  const syncAtEnd = mode === "regen" && (await hasGroup());
+  try {
+    for await (const event of voiceChapters(job)) {
+      if ("report" in event) {
+        if (event.words)
+          await sendReport(
+            api,
+            chatId,
+            event.report,
+            event.words,
+            paths.dictionary,
+          );
+        continue;
       }
+      const chapter = todo.find((c) => c.index === event.chapter)!;
+      if (event.error)
+        throw new Error(`chapter «${chapter.name}»: ${event.error}`);
+      const files = event.files ?? [];
+      if (syncAtEnd) {
+        voiced.push(...files);
+        continue;
+      }
+      const synced = mode === "new" ? await syncBook(api, folder) : undefined;
+      if (!synced) await sendAudio(api, chatId, book, files, paths.audioDir);
+      else if (!linked) linked = await sendDone(api, chatId, synced);
+    }
+  } finally {
+    // Also after a failed chapter: the chapters re-voiced before it still reach the group.
+    if (syncAtEnd) {
+      const synced = await syncBook(api, folder);
+      if (!synced) await sendAudio(api, chatId, book, voiced, paths.audioDir);
+      else await sendDone(api, chatId, synced);
+    }
+  }
+}
+
+/** `Done → <link>` to the first changed audio message; false when no audio message changed. */
+async function sendDone(
+  api: Api,
+  chatId: number,
+  synced: Synced,
+): Promise<boolean> {
+  const key = synced.changed.find(
+    (k) => k.startsWith("voice:") && k.includes("/"),
+  );
+  const link = key && synced.link(key);
+  if (!link) return false;
+  await notify(api, chatId, `Done → ${link}`);
+  return true;
+}
+
+async function sendAudio(
+  api: Api,
+  chatId: number,
+  book: Book,
+  files: string[],
+  audioDir: string,
+): Promise<void> {
+  for (const file of files) {
+    const name = path.basename(file, ".mp3");
+    try {
+      await api.sendAudio(chatId, new InputFile(file, `${name}.mp3`), {
+        title: name,
+        performer: book.title,
+      });
+    } catch (error) {
+      await notify(
+        api,
+        chatId,
+        `Couldn't send «${name}» (the file is in ${audioDir}): ${message(error)}`,
+      );
     }
   }
 }

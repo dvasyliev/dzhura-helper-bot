@@ -2,6 +2,7 @@ import { Composer, InlineKeyboard, InputFile, type Context } from "grammy";
 import path from "node:path";
 import { config } from "../../config.ts";
 import { busyWith, startJob } from "../../jobs.ts";
+import { syncKaraoke, VERSION_NAMES } from "../library/karaoke.ts";
 import type { Feature } from "../types.ts";
 import { estimate, friendly } from "./messages.ts";
 import {
@@ -132,6 +133,23 @@ composer.callbackQuery(/^karaoke:transcript:(.+)$/, async (ctx) => {
   );
 });
 
+// A library placeholder's «Make it» button, pressed in the group; the job reports in the private chat.
+composer.callbackQuery(
+  /^karaoke:make:([\w-]{11}):(music|vocals)$/,
+  async (ctx) => {
+    const id = ctx.match[1];
+    await start(
+      ctx,
+      {
+        url: `https://www.youtube.com/watch?v=${id}`,
+        id,
+        versions: [ctx.match[2] as Version],
+      },
+      config.ownerId,
+    );
+  },
+);
+
 export const karaoke: Feature = {
   id: "karaoke",
   title: "🎤 Generate karaoke",
@@ -146,9 +164,12 @@ export const karaoke: Feature = {
       : undefined,
 };
 
-/** Runs the job in the background, editing one status message, and sends the YouTube link (or the video) or asks for lyrics. False if busy. */
-async function start(ctx: Context, job: KaraokeJob): Promise<boolean> {
-  const chatId = ctx.chat!.id;
+/** Runs the job in the background in `chatId`, editing one status message, and sends the result or asks for lyrics. False if busy. */
+async function start(
+  ctx: Context,
+  job: KaraokeJob,
+  chatId = ctx.chat!.id,
+): Promise<boolean> {
   const work = async () => {
     const status = await ctx.api.sendMessage(chatId, stepText("download"));
     const working = () =>
@@ -175,7 +196,8 @@ async function start(ctx: Context, job: KaraokeJob): Promise<boolean> {
   pending = undefined;
   if (ctx.callbackQuery) {
     await ctx.answerCallbackQuery();
-    await ctx.editMessageReplyMarkup().catch(() => {});
+    if (chatId === ctx.chat?.id)
+      await ctx.editMessageReplyMarkup().catch(() => {});
   }
   return true;
 }
@@ -204,34 +226,46 @@ async function follow(
       throw new Error(event.error);
     } else {
       const name = path.basename(event.video, ".mp4");
-      if (!channel) {
-        await sendVideo(ctx, chatId, event);
-        continue;
+      let link: string | undefined;
+      let notInPlaylist = false;
+      if (channel) {
+        await status("upload");
+        try {
+          const { url, inPlaylist } = await channel.publish(
+            {
+              file: event.full,
+              title: name,
+              description: `Original: ${job.url}`,
+            },
+            (url, code) => askLogin(ctx, chatId, url, code),
+          );
+          notInPlaylist = !inPlaylist;
+          link = `<b>${escapeHtml(name)}</b>\n${url}${inPlaylist ? "" : "\n(not added to the playlist)"}`;
+        } catch (error) {
+          await ctx.api.sendMessage(
+            chatId,
+            `Didn't upload to YouTube: ${friendly(error)}`,
+          );
+        }
       }
-      await status("upload");
-      try {
-        const { url, inPlaylist } = await channel.publish(
-          {
-            file: event.full,
-            title: name,
-            description: `Original: ${job.url}`,
-          },
-          (url, code) => askLogin(ctx, chatId, url, code),
-        );
+      const inLibrary = (await syncKaraoke(ctx.api))?.link(
+        `${path.basename(path.dirname(event.video))}/${versionOf(name)}`,
+      );
+      if (inLibrary)
         await ctx.api.sendMessage(
           chatId,
-          `<b>${escapeHtml(name)}</b>\n${url}${inPlaylist ? "" : "\n(not added to the playlist)"}`,
-          { parse_mode: "HTML" },
+          `Done → ${inLibrary}${notInPlaylist ? " (not added to the playlist)" : ""}`,
         );
-      } catch (error) {
-        await ctx.api.sendMessage(
-          chatId,
-          `Didn't upload to YouTube: ${friendly(error)}`,
-        );
-        await sendVideo(ctx, chatId, event);
-      }
+      else if (link)
+        await ctx.api.sendMessage(chatId, link, { parse_mode: "HTML" });
+      else await sendVideo(ctx, chatId, event);
     }
   }
+}
+
+/** The version a karaoke file is: «X (Karaoke)» → music, «X (Vocals)» → vocals. */
+function versionOf(name: string): Version {
+  return name.endsWith(`(${VERSION_NAMES.vocals})`) ? "vocals" : "music";
 }
 
 /** How to log in, then the code alone, so it is easy to copy. */

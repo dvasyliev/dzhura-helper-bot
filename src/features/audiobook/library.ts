@@ -58,8 +58,11 @@ async function lastChange(folder: string): Promise<number> {
   return Math.max(...times);
 }
 
-export async function loadBook(folder: string): Promise<Book | undefined> {
-  const dir = path.join(BOOKS_DIR, folder);
+export async function loadBook(
+  folder: string,
+  root = BOOKS_DIR,
+): Promise<Book | undefined> {
+  const dir = path.join(root, folder);
   const files = await readdir(dir);
   // A PDF is read once into book.md; reading the PDF again would take a minute.
   if (files.includes(BOOK_MD))

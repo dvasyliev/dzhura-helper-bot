@@ -2,20 +2,13 @@
 
 ## Structure
 
-`/start` shows the feature menu. Each feature is its own folder in [src/features/](../src/features/) with its own message and button handlers; the menu list and order are in [src/features/index.ts](../src/features/index.ts). A feature with no handlers shows as "(soon)". A sent book or link goes through [src/input.ts](../src/input.ts) first: the bot reads it once, asks every feature for its actions (`actions` in the feature), and replies with one card of buttons ([src/card.ts](../src/card.ts)); when only one feature can help and its next step is a question (a Ukrainian book's voices, a YouTube video's karaoke version), that question comes at once. Heavy jobs (voicing and so on) run one at a time through [src/jobs.ts](../src/jobs.ts). The Python parts live in the feature's folder: `src/features/<feature>/scripts/` (shared environment: `pyproject.toml` at the root).
-
-| Feature | Status |
-|---|---|
-| 🎧 Create an audiobook | works |
-| 🌐 Translate a book | works |
-| 🎤 Generate karaoke | works |
-| 📝 YouTube summary | soon |
+`/start` shows the feature menu. Each feature is its own folder in [src/features/](../src/features/) with its own message and button handlers; the menu list and order are in [src/features/index.ts](../src/features/index.ts). A feature with no handlers shows as "(soon)". A sent book or link goes through [src/input.ts](../src/input.ts) first: the bot reads it once, asks every feature for its actions (`actions` in the feature), and replies with one card of buttons ([src/card.ts](../src/card.ts)); when only one feature can help and its next step is a question (a Ukrainian book's voices, a YouTube video's karaoke version), that question comes at once. Heavy jobs (voicing and so on) run one at a time through [src/jobs.ts](../src/jobs.ts). The Python parts live in the feature's folder: `src/features/<feature>/scripts/` (shared environment: `pyproject.toml` at the root). The features and their status are in the [README](../README.md#features).
 
 ## How an audiobook is voiced
 
-The bot voices Ukrainian books with HolosTTS and English books with Kokoro. It detects the language from the text: Cyrillic with і/ї/є/ґ is Ukrainian, Latin with many frequent English words (the, and, of…) is English; any other book is refused. The whole book is read by one voice, picked from the buttons with that language's voices. The book's folder is `data/audiobook/<author> - <title>/`; title and author come from the EPUB metadata, or from the file name if there is no title. If the book was voiced before, the bot says right away how many chapters are done in which voice. You can return to a book you already sent without the EPUB: write a word from the title or author ("верн", "гранта") and the bot shows up to 5 matches as buttons (or asks "this one?" if there is one match).
+The bot voices Ukrainian books with HolosTTS and English books with Kokoro. It detects the language from the text: Cyrillic with і/ї/є/ґ is Ukrainian, Latin with many frequent English words (the, and, of…) is English; any other book is refused. A book is an EPUB or a PDF with a text layer (a scan is refused); a PDF is converted once into `book.md` with docling, and its chapters come from its bookmarks or headings. The whole book is read by one voice, picked from the buttons with that language's voices. The book's folder is `data/audiobook/<author> - <title>/`; title and author come from the book's metadata, or from the file name if there is no title. If the book was voiced before, the bot says right away how many chapters are done in which voice. You can return to a book you already sent without the EPUB: write a word from the title or author ("верн", "гранта") and the bot shows up to 5 matches as buttons (or asks "this one?" if there is one match).
 
-Chapters come from the book's table of contents (one EPUB file can hold several chapters). For each chapter of a Ukrainian book:
+An EPUB's chapters come from its table of contents (one EPUB file can hold several chapters). For each chapter of a Ukrainian book:
 
 1. **Text preparation** ([prepare.py](../src/features/audiobook/scripts/uk/prepare.py)): abbreviations as words ("т. д.", "1864 р.", "XIX ст.", "5 км", "%", "£"), numbers as words ([uk/numbers.py](../src/features/audiobook/scripts/uk/numbers.py)), stress marks ([accentuk](https://pypi.org/project/accentuk/): a dictionary plus a neural network that picks between variants from the sentence's meaning, like за́мок/замо́к; where accentuk guessed and Wiktionary knows a single stress, Wiktionary's is used), then general rules for all books ([stress_rules.txt](../src/features/audiobook/scripts/uk/stress_rules.txt), e.g. коли́ instead of ко́ли) and the book's own stress dictionary (`stresses.txt` in its folder). The result is saved to `text/001 Title.txt`; you can edit it by hand. The texts of the next chapters are prepared in a separate process while the current one is voiced.
 2. **Voicing**: phonemes (ipa-uk) → HolosTTS sentence by sentence.
@@ -97,6 +90,30 @@ The Google app is in "Testing" status, so a sign-in lasts 7 days: when it expire
 
 Python tests: `uv run pytest src/features/karaoke`.
 
+## The library group
+
+Results go to a Telegram group instead of the private chat. The private chat stays the control panel (buttons, progress, questions, the stress report); when something lands in the group, the bot replies `Done → <link>`. Code: [src/features/library/](../src/features/library/) (a folder with no menu item).
+
+The group is a forum (Topics on) that only the bot writes in. It mirrors `data/`: after each job the bot compares the files on disk with the messages it posted and makes the topic match.
+
+- **One topic per book**, named `Author — Title`, with a pinned contents message (language, chapters, how many are voiced in which voice, whether a translation exists), the original file, the Ukrainian EPUB if translated, then for each voice a `🎧 <voice>` header and its chapters in order. A translated book stays in its original's topic.
+- **One topic `🎤 Karaoke`**, two messages per song: Karaoke and Vocals. A version not made yet is a text placeholder with a "🎤 Make it" button; when the video is ready it replaces the placeholder in the same place. A version uploaded to YouTube is its link.
+- **Changes** (a re-voiced chapter, a new translation) replace the file in its message. If a chapter is missing in the middle, the messages from there are deleted and sent again (files already in Telegram are re-sent by `file_id`, not uploaded twice).
+- **Limits**: a file over 50 MB is skipped and its path is sent to the private chat once. Telegram allows about 20 messages a minute in a group, so a long book takes a few minutes; the bot waits when Telegram says "slow down".
+- **State** is in `data/library.json` (group id, topic and message ids, each file's `file_id`, size and time). The group id is saved by itself when you add the bot; no environment variable is needed.
+- **`/publish`** puts everything already in `data/` into the group; run it again and it adds only what is missing.
+- **Fallback**: with no group, or if the group breaks (bot removed, rights lost), files come to the private chat as before and the bot says why, once. A topic deleted by hand comes back with /publish (which checks every topic still exists) or when a sync next sends to it. A single message deleted by hand is replaced when its file changes, or when a later change makes the bot send the messages after it again.
+
+Setup, in order:
+
+1. Create a group and turn on Topics.
+2. Add the bot to it.
+3. Make it an admin with "Manage topics", "Delete messages" and "Pin messages".
+4. The bot answers in the private chat that the group is saved, or what rights it still needs.
+5. Send `/publish` in the private chat.
+
+Tests: `npx vitest run src/features/library`.
+
 ## Sample
 
 `npm run sample -- "Жуль Верн - Діти капітана Гранта" 150` takes the EPUB from `data/audiobook/Жуль Верн - Діти капітана Гранта/` and voices the first 150 words in each voice of the book's language into `data/voice-samples/<language>/<voice>.mp3`.
@@ -105,6 +122,6 @@ Python tests: `uv run pytest src/features/audiobook`.
 
 ## Telegram limits
 
-- EPUB up to 20 MB (the bot can't download a larger file).
+- A book file (EPUB, PDF) up to 20 MB (the bot can't download a larger file).
 - Audio up to 50 MB (≈100 min at 64 kbps): a chapter longer than 90 minutes arrives in parts `001 Title (1)`, `001 Title (2)`.
 - Karaoke video up to 50 MB: a long clip is compressed harder; if sending fails, the bot sends the file's path on the Mac.

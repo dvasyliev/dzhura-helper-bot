@@ -10,6 +10,7 @@ A personal Telegram bot (grammY, TypeScript on Node via `tsx`) that answers only
 
 - Each feature is a folder in `src/features/<feature>/` with its own message and button handlers; the menu order is in `src/features/index.ts`. A feature with no handlers shows as "(скоро)".
 - `src/features/book/` is a feature with no menu item: code that reads books (EPUB, PDF, `book.md`), shared by the book features (audiobook, translate). Shared code goes in such a folder and the features import it.
+- `src/features/library/` is a feature with no menu item: it mirrors `data/` into a Telegram forum group (a topic per book, one for karaoke); features call its sync instead of sending result files. State is in `data/library.json`.
 - Heavy jobs run one at a time through `src/jobs.ts`.
 - Python code lives next to its feature in `src/features/<feature>/scripts/`. The TS side starts it with `spawn("uv", ["run", "--quiet", "python", "<script>"])` and talks over stdin/stdout. Scripts import their neighbours by bare module name (`import lyrics`), so each `scripts/` folder is its own import root. Its subfolders are packages imported from that root (`from uk.prepare import ...`).
 - Working data (books, audio, videos) goes to `data/` (git-ignored). Secrets are in `.env` (`BOT_TOKEN`, `OWNER_ID`).
