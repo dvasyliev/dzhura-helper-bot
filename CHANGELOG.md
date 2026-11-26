@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0 (2026-11-26)
+
+### Features
+
+- summarise a YouTube video in Ukrainian; EPUB from a PDF (95d8d42)
+
 ## 0.10.0 (2026-11-26)
 
 ### Features
