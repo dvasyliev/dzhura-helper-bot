@@ -1,4 +1,5 @@
 import type { Composer, Context } from "grammy";
+import type { Input } from "../input.ts";
 
 /** One thing the bot can do; it shows up as a button in the /start menu. */
 export type Feature = {
@@ -12,4 +13,16 @@ export type Feature = {
   commands?: { command: string; description: string }[];
   /** Handlers for the feature's messages and buttons. */
   composer?: Composer<Context>;
+  /** The card buttons this feature offers for a sent book or link; nothing when it can't handle it. */
+  actions?: (input: Input) => Promise<Actions | undefined>;
+};
+
+/** A feature's part of the action card. */
+export type Actions = {
+  /** Buttons whose callbacks the feature's composer handles. */
+  buttons: { text: string; data: string }[];
+  /** Status lines under the card's summary, e.g. how much is voiced. */
+  lines?: string[];
+  /** The feature's next step when it is only a question; shown at once when no other feature has an action. */
+  ask?: (ctx: Context) => Promise<unknown>;
 };

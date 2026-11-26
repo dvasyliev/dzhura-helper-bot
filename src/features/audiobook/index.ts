@@ -1,12 +1,10 @@
 import { Composer, InlineKeyboard, type Context } from "grammy";
-import { mkdir, readdir, writeFile } from "node:fs/promises";
-import { config } from "../../config.ts";
+import { readdir } from "node:fs/promises";
 import { busyWith, startJob } from "../../jobs.ts";
-import { translateButton } from "../translate/button.ts";
+import { findFolder, folderKey } from "../translate/button.ts";
 import type { Feature } from "../types.ts";
 import { notify, message, voiceBook } from "./deliver.ts";
-import { placeSource, readPdf } from "./pdf.ts";
-import { parseEpub, type Book } from "../book/epub.ts";
+import type { Book } from "../book/epub.ts";
 import {
   BOOKS_DIR,
   MAX_FOUND,
@@ -17,14 +15,12 @@ import {
   type Chapter,
 } from "./library.ts";
 import {
-  bookDir,
   bookName,
   bookPaths,
   findBooks,
   bookLanguage,
   forecast,
   parseNumbers,
-  safeFilename,
   voicingTime,
   type BookLanguage,
   type Language,
@@ -37,15 +33,10 @@ import {
   type Voice,
 } from "./voice.ts";
 
-const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024; // Telegram Bot API getFile limit
 /** Chapters voiced in one go unless the whole book is asked for. */
 const BATCH = 5;
 const TYPE_RANGE = "Or type chapter numbers, for example 10-20.";
 const ONLY_LANGUAGES = "I voice only Ukrainian and English books.";
-const RUSSIAN =
-  "I can't voice Russian books, but I can translate this one into Ukrainian.";
-const SCAN =
-  "This PDF looks like a scan; I can read only PDFs with a text layer for now.";
 
 /** The last book sent, waiting for the voice to be chosen. */
 let pending: Book | undefined;
@@ -57,62 +48,6 @@ let current: { book: Book; voice: Voice } | undefined;
 let found: string[] = [];
 
 const composer = new Composer<Context>();
-
-composer.on("message:document", async (ctx, next) => {
-  const doc = ctx.message.document;
-  const name = doc.file_name ?? "";
-  const pdf = name.toLowerCase().endsWith(".pdf");
-  if (!pdf && !name.toLowerCase().endsWith(".epub")) return next();
-  if ((doc.file_size ?? 0) > MAX_DOWNLOAD_BYTES)
-    return ctx.reply(
-      "The file is over 20 MB: Telegram doesn't let bots download it.",
-    );
-  if (pdf && busyWith())
-    return ctx.reply(`Please wait, ${busyWith()} is in progress.`);
-
-  try {
-    const data = await download(ctx);
-    if (pdf) return await startPdf(ctx, data, name);
-    const book = await parseEpub(data, name);
-    if (!book.chapters.length)
-      return ctx.reply("Found no chapter with text in the book.");
-    const language = languageOf(book);
-    if (!language) return ctx.reply(ONLY_LANGUAGES);
-    const dir = bookDir(bookName(book));
-    await mkdir(dir, { recursive: true });
-    await writeFile(`${dir}/${safeFilename(name)}`, data);
-    await placeSource(dir, [safeFilename(name)]);
-    await offerBook(ctx, book, language);
-  } catch (error) {
-    await ctx.reply(`Error: ${message(error)}`);
-  }
-});
-
-async function download(ctx: Context): Promise<Buffer> {
-  const file = await ctx.getFile();
-  const res = await fetch(
-    `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`,
-  );
-  if (!res.ok) throw new Error(`Couldn't download the file (${res.status})`);
-  return Buffer.from(await res.arrayBuffer());
-}
-
-/** Reads the PDF into book.md in the background (it takes a minute or two), then offers the voices. */
-async function startPdf(ctx: Context, data: Buffer, name: string) {
-  const chatId = ctx.chat!.id;
-  const read = async () => {
-    const book = await readPdf(data, name);
-    if (book === "scan") return notify(ctx.api, chatId, SCAN);
-    if (!book.chapters.length)
-      return notify(ctx.api, chatId, "Found no chapter with text in the book.");
-    await offerBook(ctx, book);
-  };
-  const stopped = (error: unknown) =>
-    notify(ctx.api, chatId, `Reading the PDF stopped: ${message(error)}`);
-  if (!startJob(`reading «${name}»`, read, stopped))
-    return ctx.reply(`Please wait, ${busyWith()} is in progress.`);
-  await ctx.reply("Reading the PDF, this takes a minute or two.");
-}
 
 // Voice chosen: a short rest is voiced at once, otherwise the owner picks how much.
 composer.callbackQuery(/^voice:(.+)$/, async (ctx) => {
@@ -238,7 +173,10 @@ composer.callbackQuery(/^book:(.+)$/, async (ctx) => {
       return ctx.reply(
         `The folder «${folder}» has no EPUB or book.md. Send the book again.`,
       );
-    await offerBook(ctx, book);
+    const language = languageOf(book);
+    if (language !== "uk" && language !== "en")
+      return ctx.reply(ONLY_LANGUAGES);
+    await offer(ctx, book, language);
   } catch (error) {
     await ctx.reply(`Error: ${message(error)}`);
   }
@@ -255,7 +193,37 @@ export const audiobook: Feature = {
     },
   ],
   composer,
+  actions: async (input) => {
+    if (input.kind !== "book") return;
+    const { book, folder, language } = input;
+    if (language !== "uk" && language !== "en") return;
+    return {
+      buttons: [{ text: "🎧 Voice", data: `voice-book:${folderKey(folder)}` }],
+      lines: voicedSoFar(book, chapters(book), voicesFor(language)),
+      ask: (ctx) => offer(ctx, book, language),
+    };
+  },
 };
+
+// The card's «Voice» button: the voices for the book in the folder the button names.
+composer.callbackQuery(/^voice-book:([0-9a-f]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const folders = await readdir(BOOKS_DIR, { withFileTypes: true }).catch(
+    () => [],
+  );
+  const folder = findFolder(
+    ctx.match[1],
+    folders.filter((f) => f.isDirectory()).map((f) => f.name),
+  );
+  const book = folder
+    ? await loadBook(folder).catch(() => undefined)
+    : undefined;
+  const language = book && languageOf(book);
+  if (!book || (language !== "uk" && language !== "en"))
+    return ctx.reply("This book is no longer here; send it again.");
+  await ctx.editMessageReplyMarkup().catch(() => {});
+  await offer(ctx, book, language);
+});
 
 /** Voices `todo` in the background, then offers the rest of the book if any is left. */
 async function start(ctx: Context, book: Book, voice: Voice, todo: Chapter[]) {
@@ -350,22 +318,6 @@ function languageOf(book: Book): BookLanguage | undefined {
   return bookLanguage(book.chapters.map((c) => c.text).join("\n"));
 }
 
-/** The voices for a Ukrainian or English book; a Russian one can only be translated. */
-async function offerBook(
-  ctx: Context,
-  book: Book,
-  language = languageOf(book),
-) {
-  if (!language) return ctx.reply(ONLY_LANGUAGES);
-  if (language === "ru")
-    return ctx.reply(RUSSIAN, {
-      reply_markup: new InlineKeyboard().add(
-        translateButton(safeFilename(bookName(book))),
-      ),
-    });
-  await offer(ctx, book, language);
-}
-
 /** What is already voiced, the forecast and the buttons with the voices of the book's language; an English book can also be translated. */
 export async function offer(ctx: Context, book: Book, language: Language) {
   pending = book;
@@ -375,13 +327,17 @@ export async function offer(ctx: Context, book: Book, language: Language) {
   const lines = [
     `${bookName(book)}: ${all.length} chapters.`,
     ...voicedSoFar(book, all, voices),
+    ...(voices.some((v) => {
+      const left = remaining(book, v).length;
+      return left && left < all.length;
+    })
+      ? ["Pick the same voice to continue where it stopped."]
+      : []),
     estimate(all, voices[0]),
     "Which voice?",
   ];
   const keyboard = new InlineKeyboard();
   for (const voice of voices) keyboard.text(voice.name, `voice:${voice.id}`);
-  if (language === "en")
-    keyboard.row().add(translateButton(safeFilename(bookName(book))));
   await ctx.reply(lines.join("\n"), { reply_markup: keyboard });
 }
 
@@ -393,12 +349,9 @@ function voicedSoFar(book: Book, all: Chapter[], voices: Voice[]): string[] {
       count: voicedCount(book, voice, all),
     }))
     .filter((d) => d.count);
-  const lines = done.map(
+  return done.map(
     (d) => `Already voiced by «${d.voice.name}»: ${d.count} of ${all.length}.`,
   );
-  if (done.some((d) => d.count < all.length))
-    lines.push("Pick the same voice to continue where it stopped.");
-  return lines;
 }
 
 function estimate(todo: Chapter[], voice: Voice): string {

@@ -8,7 +8,7 @@ import { bookDir, bookName, safeFilename } from "../audiobook/text.ts";
 import type { Book } from "../book/epub.ts";
 import { BOOK_MD, parseMarkdown } from "../book/markdown.ts";
 import type { Feature } from "../types.ts";
-import { findFolder, folderKey } from "./button.ts";
+import { findFolder, folderKey, translateButton } from "./button.ts";
 import { splitChunks } from "./chunks.ts";
 import { doneCount, unfinishedTranslations } from "./library.ts";
 import { TRANSLATE_DIR, translateBook, type Progress } from "./pipeline.ts";
@@ -53,6 +53,12 @@ export const translate: Feature = {
   title: "🌐 Translate a book",
   open: openMenu,
   composer,
+  actions: async (input) => {
+    if (input.kind !== "book") return;
+    if (input.language !== "en" && input.language !== "ru") return;
+    const button = translateButton(input.folder);
+    return { buttons: [{ text: button.text, data: button.callback_data }] };
+  },
 };
 
 function busy(title: string): string {

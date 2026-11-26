@@ -1,0 +1,123 @@
+import type { Context } from "grammy";
+import { mkdir, writeFile } from "node:fs/promises";
+import { config } from "./config.ts";
+import { message, notify } from "./features/audiobook/deliver.ts";
+import { placeSource, readPdf } from "./features/audiobook/pdf.ts";
+import {
+  bookDir,
+  bookLanguage,
+  bookName,
+  safeFilename,
+  type BookLanguage,
+} from "./features/audiobook/text.ts";
+import { parseEpub, type Book } from "./features/book/epub.ts";
+import { youtubeId } from "./features/karaoke/link.ts";
+import { busyWith, startJob } from "./jobs.ts";
+
+/** What the owner sent, recognised once; features offer their actions for it. */
+export type Input =
+  | { kind: "book"; book: Book; folder: string; language?: BookLanguage }
+  | { kind: "youtube"; id: string }
+  | { kind: "link"; url: string };
+
+/** A YouTube video or any other link in `text`; plain text is not an input here. */
+export function linkInput(text: string): Input | undefined {
+  const id = youtubeId(text);
+  if (id) return { kind: "youtube", id };
+  const url = text.match(/https?:\/\/\S+/)?.[0];
+  return url ? { kind: "link", url } : undefined;
+}
+
+const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024; // Telegram Bot API getFile limit
+const NO_CHAPTER = "Found no chapter with text in the book.";
+const SCAN =
+  "This PDF looks like a scan; I can read only PDFs with a text layer for now.";
+
+/** Whether a sent file is a book the bot reads, by its name. */
+export function isBookFile(name: string): "epub" | "pdf" | undefined {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".epub")) return "epub";
+  if (lower.endsWith(".pdf")) return "pdf";
+  return undefined;
+}
+
+/**
+ * Reads a sent EPUB at once, or a PDF in the background (it takes a minute or two), saves it in its book
+ * folder and hands it to `show`. False when the document is not a book file.
+ */
+export async function receiveBook(
+  ctx: Context,
+  show: (input: Input) => Promise<unknown>,
+): Promise<boolean> {
+  const doc = ctx.message?.document;
+  const name = doc?.file_name ?? "";
+  const type = isBookFile(name);
+  if (!doc || !type) return false;
+  if ((doc.file_size ?? 0) > MAX_DOWNLOAD_BYTES) {
+    await ctx.reply(
+      "The file is over 20 MB: Telegram doesn't let bots download it.",
+    );
+    return true;
+  }
+  if (type === "pdf" && busyWith()) {
+    await ctx.reply(`Please wait, ${busyWith()} is in progress.`);
+    return true;
+  }
+  try {
+    const data = await download(ctx);
+    if (type === "pdf") await startPdf(ctx, data, name, show);
+    else {
+      const book = await parseEpub(data, name);
+      if (!book.chapters.length) await ctx.reply(NO_CHAPTER);
+      else {
+        const dir = bookDir(bookName(book));
+        await mkdir(dir, { recursive: true });
+        await writeFile(`${dir}/${safeFilename(name)}`, data);
+        await placeSource(dir, [safeFilename(name)]);
+        await show(bookInput(book));
+      }
+    }
+  } catch (error) {
+    await ctx.reply(`Error: ${message(error)}`);
+  }
+  return true;
+}
+
+function bookInput(book: Book): Input {
+  return {
+    kind: "book",
+    book,
+    folder: safeFilename(bookName(book)),
+    language: bookLanguage(book.chapters.map((c) => c.text).join("\n")),
+  };
+}
+
+async function download(ctx: Context): Promise<Buffer> {
+  const file = await ctx.getFile();
+  const res = await fetch(
+    `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`,
+  );
+  if (!res.ok) throw new Error(`Couldn't download the file (${res.status})`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/** Reads the PDF into book.md in the background, then shows it. */
+async function startPdf(
+  ctx: Context,
+  data: Buffer,
+  name: string,
+  show: (input: Input) => Promise<unknown>,
+) {
+  const chatId = ctx.chat!.id;
+  const read = async () => {
+    const book = await readPdf(data, name);
+    if (book === "scan") return notify(ctx.api, chatId, SCAN);
+    if (!book.chapters.length) return notify(ctx.api, chatId, NO_CHAPTER);
+    await show(bookInput(book));
+  };
+  const stopped = (error: unknown) =>
+    notify(ctx.api, chatId, `Reading the PDF stopped: ${message(error)}`);
+  if (!startJob(`reading «${name}»`, read, stopped))
+    return ctx.reply(`Please wait, ${busyWith()} is in progress.`);
+  await ctx.reply("Reading the PDF, this takes a minute or two.");
+}

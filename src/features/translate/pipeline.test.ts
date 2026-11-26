@@ -128,6 +128,33 @@ describe("translateBook", () => {
     expect(tagged(fix?.input ?? "", "problems")).toContain("paragraphs");
   });
 
+  it("asks for a second fix when Latin or Russian letters survive the first", async () => {
+    const { opts } = await setup();
+    let fixes = 0;
+    const { run, calls } = fakeRun(
+      (s) => `${translate(s)}${isFirstChunk(s) ? " Zzz" : ""}`,
+      (s) => {
+        fixes += 1;
+        return fixes === 1 ? `${translate(s)} Zzz` : translate(s);
+      },
+    );
+    const result = await translateBook(book, { ...opts, run });
+    expect(calls.filter((c) => c.prompt === "fix-prompt.md")).toHaveLength(2);
+    expect(result.report).toEqual({ fixed: 1, problems: 0, unchecked: 0 });
+    expect(result.book.chapters[0]?.text).not.toContain("Zzz");
+  });
+
+  it("makes no second fix when only other problems are left", async () => {
+    const { opts } = await setup();
+    const { run, calls } = fakeRun(
+      (s) => translate(s, isFirstChunk(s)),
+      (s) => translate(s, true),
+    );
+    const result = await translateBook(book, { ...opts, run });
+    expect(calls.filter((c) => c.prompt === "fix-prompt.md")).toHaveLength(1);
+    expect(result.report).toEqual({ fixed: 0, problems: 1, unchecked: 0 });
+  });
+
   it("reports a chunk the fix did not mend and still finishes", async () => {
     const { dir, opts } = await setup();
     const broken = (s: string) => `${translate(s, true)} Zzz`;

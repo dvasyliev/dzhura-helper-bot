@@ -3,7 +3,6 @@ import path from "node:path";
 import { config } from "../../config.ts";
 import { busyWith, startJob } from "../../jobs.ts";
 import type { Feature } from "../types.ts";
-import { youtubeId } from "./link.ts";
 import { estimate, friendly } from "./messages.ts";
 import {
   isSeparated,
@@ -68,18 +67,6 @@ const composer = new Composer<Context>();
 
 composer.on("message:text", async (ctx, next) => {
   const text = ctx.message.text;
-  const id = youtubeId(text);
-  if (id) {
-    pending = { url: `https://www.youtube.com/watch?v=${id}`, id };
-    const keyboard = new InlineKeyboard()
-      .text("🎵 Karaoke", "karaoke:music")
-      .text("🎤 Vocals", "karaoke:vocals")
-      .text("🎵🎤 Both", "karaoke:both");
-    return ctx.reply(
-      `Which version? ${estimate({ separated: isSeparated(id), youtube: !!channel })}`,
-      { reply_markup: keyboard },
-    );
-  }
   if (!last || !(text.includes("\n") || paste)) return next();
   const song = last;
   if (paste) clearTimeout(paste.timer);
@@ -98,6 +85,26 @@ const VERSIONS: Record<string, Version[]> = {
   vocals: ["vocals"],
   both: ["music", "vocals"],
 };
+
+/** «Which version?» for the video `id`, with the forecast. */
+function askVersion(ctx: Context, id: string) {
+  pending = { url: `https://www.youtube.com/watch?v=${id}`, id };
+  const keyboard = new InlineKeyboard()
+    .text("🎵 Karaoke", "karaoke:music")
+    .text("🎤 Vocals", "karaoke:vocals")
+    .text("🎵🎤 Both", "karaoke:both");
+  return ctx.reply(
+    `Which version? ${estimate({ separated: isSeparated(id), youtube: !!channel })}`,
+    { reply_markup: keyboard },
+  );
+}
+
+// The card's «Karaoke» button.
+composer.callbackQuery(/^karaoke:open:([\w-]{11})$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageReplyMarkup().catch(() => {});
+  await askVersion(ctx, ctx.match[1]);
+});
 
 composer.callbackQuery(/^karaoke:(music|vocals|both)$/, async (ctx) => {
   if (!pending) return ctx.answerCallbackQuery("Send the link again.");
@@ -130,6 +137,13 @@ export const karaoke: Feature = {
   title: "🎤 Generate karaoke",
   hint: "Send a YouTube clip link and I'll make a karaoke video of it.",
   composer,
+  actions: async (input) =>
+    input.kind === "youtube"
+      ? {
+          buttons: [{ text: "🎤 Karaoke", data: `karaoke:open:${input.id}` }],
+          ask: (ctx) => askVersion(ctx, input.id),
+        }
+      : undefined,
 };
 
 /** Runs the job in the background, editing one status message, and sends the YouTube link (or the video) or asks for lyrics. False if busy. */

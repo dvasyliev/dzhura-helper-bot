@@ -2,7 +2,7 @@
 
 ## Structure
 
-`/start` shows the feature menu. Each feature is its own folder in [src/features/](../src/features/) with its own message and button handlers; the menu list and order are in [src/features/index.ts](../src/features/index.ts). A feature with no handlers shows as "(soon)". Heavy jobs (voicing and so on) run one at a time through [src/jobs.ts](../src/jobs.ts). The Python parts live in the feature's folder: `src/features/<feature>/scripts/` (shared environment: `pyproject.toml` at the root).
+`/start` shows the feature menu. Each feature is its own folder in [src/features/](../src/features/) with its own message and button handlers; the menu list and order are in [src/features/index.ts](../src/features/index.ts). A feature with no handlers shows as "(soon)". A sent book or link goes through [src/input.ts](../src/input.ts) first: the bot reads it once, asks every feature for its actions (`actions` in the feature), and replies with one card of buttons ([src/card.ts](../src/card.ts)); when only one feature can help and its next step is a question (a Ukrainian book's voices, a YouTube video's karaoke version), that question comes at once. Heavy jobs (voicing and so on) run one at a time through [src/jobs.ts](../src/jobs.ts). The Python parts live in the feature's folder: `src/features/<feature>/scripts/` (shared environment: `pyproject.toml` at the root).
 
 | Feature | Status |
 |---|---|
@@ -43,12 +43,12 @@ Voices are in [voices.json](../src/features/audiobook/voices.json), grouped by l
 
 ## How a book is translated
 
-The bot translates en and ru EPUB and PDF books into uk through Claude (`claude -p`, signed in on the Mac). A ru book cannot be voiced, so the bot offers to translate it; an English one gets a "🌐 Translate to Ukrainian" button next to the voices. Code: [src/features/translate/](../src/features/translate/); language data: [lang/](../src/features/translate/lang/).
+The bot translates en and ru EPUB and PDF books into uk through Claude (`claude -p`, signed in on the Mac). A sent en or ru book gets a "🌐 Translate to Ukrainian" button on its card (a ru one cannot be voiced, so that is its only button). Code: [src/features/translate/](../src/features/translate/); language data: [lang/](../src/features/translate/lang/).
 
 1. **Glossary candidates** ([glossary_candidates.py](../src/features/translate/scripts/glossary_candidates.py)): names seen at least twice, most frequent first. A language whose `lang/<code>/language.json` names a spaCy model (English: `en_core_web_sm`) uses its named entities; any other, capitalised words in mid-sentence. No ru-specific code or data.
 2. **Glossary**: one Claude call gives the Ukrainian title, author and the form of each name with its gender and declension (`glossary.json`).
 3. **Translation**: the book is cut into parts by paragraphs; each part goes to Claude with the last paragraph before it and the glossary lines of the names it has (English names match as whole words, names in other languages by their stem).
-4. **Check** ([chunk_check.py](../src/features/translate/scripts/chunk_check.py)), without a model: fixes the apostrophe (ʼ), quotes («») and dialogue dashes, then flags Latin words not in the source, ru letters, a lost or extra paragraph, a missing chapter title, glossary names in another form, and calques. A part with problems gets one fix call; the better of the two versions is kept, and what is left goes to `report.json`. If the checker itself fails, the part is saved unchecked and checked again next time; three failures in a row stop the translation.
+4. **Check** ([chunk_check.py](../src/features/translate/scripts/chunk_check.py)), without a model: fixes the apostrophe (ʼ), quotes («») and dialogue dashes, then flags Latin words not in the source, ru letters, a lost or extra paragraph, a missing chapter title, glossary names in another form, and calques. A part with problems gets a fix call, and a second one if Latin or ru letters are still left; the version with fewer problems is kept, and what is left goes to `report.json`. If the checker itself fails, the part is saved unchecked and checked again next time; three failures in a row stop the translation.
 5. **Book**: the parts are joined into `book.uk.md`, pandoc builds the EPUB, the bot sends it and adds the book to the audiobook library with the voice buttons.
 
 ```

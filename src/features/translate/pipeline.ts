@@ -36,6 +36,9 @@ type Run = typeof runClaude;
 
 /** The shortest wait after a usage limit, so a reset time already past does not loop. */
 const MIN_LIMIT_WAIT_MS = 60_000;
+/** Problems that are always real errors, worth a second fix call when the first one leaves them. */
+const HARD_KINDS = new Set<Problem["kind"]>(["latin", "russian-letters"]);
+
 /** This many chunks in a row the checker fails on mean the Python side is broken: the translation stops. */
 const MAX_FAILED_CHECKS = 3;
 
@@ -50,7 +53,7 @@ type Options = {
   candidates?: typeof candidates;
 };
 
-/** A chunk whose first translation had problems: what was found and what is left after the fix call. */
+/** A chunk whose first translation had problems: what was found and what is left after the fix calls. */
 type ReportEntry = { chunk: string; found: Problem[]; left: Problem[] };
 
 const REPORT = z.array(
@@ -223,7 +226,10 @@ export async function translateBook(
   const unchecked = (entry?: ReportEntry) =>
     !!entry?.left.some((p) => p.kind === "check-failed");
 
-  /** Checks a translation and, when problems remain, asks for one fix; records the chunk in report.json. */
+  /**
+   * Checks a translation and, when problems remain, asks for a fix; a second fix only when Latin or Russian
+   * letters survive the first. Records the chunk in report.json.
+   */
   const checkAndFix = async (
     name: string,
     chunk: Chunk,
@@ -241,18 +247,16 @@ export async function translateBook(
     const found = checked.problems;
     const failed = found.some((p) => p.kind === "check-failed");
     let left = found;
-    if (found.length && !failed) {
+    for (let round = 1; round <= 2 && left.length && !failed; round++) {
+      if (round === 2 && !left.some((p) => HARD_KINDS.has(p.kind))) break;
       const fixed = await checkOrKeep({
         ...input,
         translation: (
-          await call(
-            FIX_PROMPT,
-            fixInput(chunk.text, translation, found, terms),
-          )
+          await call(FIX_PROMPT, fixInput(chunk.text, translation, left, terms))
         ).trim(),
       });
       const fixFailed = fixed.problems.some((p) => p.kind === "check-failed");
-      if (!fixFailed && fixed.problems.length < found.length) {
+      if (!fixFailed && fixed.problems.length < left.length) {
         translation = fixed.translation;
         left = fixed.problems;
       }
