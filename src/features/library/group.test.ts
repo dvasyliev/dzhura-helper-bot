@@ -57,7 +57,8 @@ describe("withGroup", () => {
     expect(api.sendMessage).toHaveBeenCalledTimes(1);
     expect(api.sendMessage).toHaveBeenCalledWith(
       7,
-      "The library group is unavailable (bot was kicked); sending here.",
+      "⚠️ <b>The library group is unavailable</b>\nbot was kicked\nSending here.",
+      { parse_mode: "HTML" },
     );
     resetUnavailable();
     await withGroup(api as unknown as Api, fail, file);
@@ -69,9 +70,11 @@ describe("withGroup", () => {
     const fail = () => Promise.reject(new Error("EACCES: book.mp3"));
     await withGroup(api as unknown as Api, fail, file);
     await withGroup(api as unknown as Api, fail, file);
+    const note =
+      "⚠️ <b>Couldn't update the library</b>\nEACCES: book.mp3\nSending here.";
     expect(api.sendMessage.mock.calls).toEqual([
-      [7, "Couldn't update the library (EACCES: book.mp3); sending here."],
-      [7, "Couldn't update the library (EACCES: book.mp3); sending here."],
+      [7, note, { parse_mode: "HTML" }],
+      [7, note, { parse_mode: "HTML" }],
     ]);
   });
 });

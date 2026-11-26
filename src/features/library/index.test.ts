@@ -14,11 +14,13 @@ import {
   publish,
 } from "./index.ts";
 import { loadState, saveState } from "./state.ts";
+import { describeShelf } from "./describe.ts";
 import { syncKaraoke } from "./karaoke.ts";
 import type { Synced } from "./topic.ts";
 
 vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
 vi.mock("./books.ts", () => ({ bookFolders: vi.fn(), syncBook: vi.fn() }));
+vi.mock("./describe.ts", () => ({ describeShelf: vi.fn(async () => {}) }));
 vi.mock("./karaoke.ts", () => ({ syncKaraoke: vi.fn() }));
 
 const user = { id: 1, is_bot: true, first_name: "bot" };
@@ -94,8 +96,29 @@ describe("publish", () => {
     await publish(api, reply);
     expect(syncKaraoke).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledWith(
-      "Publishing stopped: the library group is unavailable.",
+      "⚠️ <b>Publishing stopped</b>\nThe library group is unavailable.",
     );
+  });
+
+  it("describes the voiced tracks before syncing, with the status callback", async () => {
+    const order: string[] = [];
+    vi.mocked(describeShelf).mockImplementationOnce(async () => {
+      order.push("describe");
+    });
+    vi.mocked(bookFolders).mockResolvedValue(["A"]);
+    vi.mocked(syncBook).mockImplementation(async () => {
+      order.push("sync");
+      return done;
+    });
+    vi.mocked(syncKaraoke).mockResolvedValue(done);
+    const show = async () => {};
+    await publish(
+      api,
+      vi.fn(async () => undefined),
+      show,
+    );
+    expect(describeShelf).toHaveBeenLastCalledWith(show);
+    expect(order).toEqual(["describe", "sync"]);
   });
 
   it("probes every topic and says how many are up to date", async () => {
@@ -108,7 +131,9 @@ describe("publish", () => {
       probe: true,
     });
     expect(syncKaraoke).toHaveBeenCalledWith(api, undefined, { probe: true });
-    expect(reply).toHaveBeenCalledWith("Library is up to date: 2 topics.");
+    expect(reply).toHaveBeenCalledWith(
+      "✅ <b>Library is up to date</b>\n\n<blockquote>2 topics</blockquote>",
+    );
   });
 });
 
@@ -120,10 +145,10 @@ describe("memberChange", () => {
   it("saves the group and says which rights are missing", async () => {
     const file = join(await mkdtemp(join(tmpdir(), "member-")), "library.json");
     expect(await memberChange(group(-1), admin, file)).toBe(
-      "Library group saved.",
+      "✅ <b>Library group saved</b>",
     );
     expect(await memberChange(group(-1), plain, file)).toBe(
-      "Library group saved, but I need: manage topics, delete messages, pin messages.",
+      "⚠️ <b>Library group saved, but I need</b>\nmanage topics, delete messages, pin messages",
     );
     expect((await loadState(file)).chatId).toBe(-1);
   });
@@ -133,7 +158,7 @@ describe("memberChange", () => {
     const topic = { threadId: 3, messages: [], tooBig: {} };
     await saveState({ chatId: -1, topics: { a: topic } }, file);
     expect(await memberChange(group(-1), left, file)).toBe(
-      "Removed from the library group; results come here again.",
+      "📚 <b>Removed from the library group</b>\nResults come here again.",
     );
     expect(await loadState(file)).toEqual({
       lastChatId: -1,

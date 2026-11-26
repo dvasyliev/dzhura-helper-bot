@@ -86,6 +86,8 @@ describe("translateBook, chunks at once", () => {
     await rm(join(dir, "chunks", "0002.uk.md"));
     const second = await translateBook(book, { ...opts, run: counted() });
     expect(second.usage.calls).toBe(4);
+    // Only the chunk translated again counts for the pace, not the one kept.
+    expect(progress.at(-1)).toMatchObject({ done: 2, total: 2, ran: 1 });
     expect(JSON.parse(await readFile(join(dir, "usage.json"), "utf8"))).toEqual(
       second.usage,
     );

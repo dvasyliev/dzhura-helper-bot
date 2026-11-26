@@ -7,7 +7,7 @@ import {
   reportText,
   sendEpub,
   translate,
-  usageText,
+  usageLines,
 } from "./index.ts";
 
 vi.mock("../library/books.ts", () => ({ syncBook: vi.fn() }));
@@ -15,13 +15,13 @@ vi.mock("../library/books.ts", () => ({ syncBook: vi.fn() }));
 describe("reportText", () => {
   it("names fixed parts and parts with problems", () => {
     expect(reportText({ fixed: 2, problems: 1, unchecked: 0 })).toBe(
-      "Fixed 2 parts; 1 still have problems (see report.json).",
+      "✅ <b>Translation finished</b>\n\n<blockquote>Fixed 2 parts\n1 still have problems (see report.json)</blockquote>",
     );
   });
 
   it("names the parts the checker could not check apart", () => {
     expect(reportText({ fixed: 0, problems: 1, unchecked: 3 })).toBe(
-      "Fixed 0 parts; 1 still have problems (see report.json). 3 parts were not checked: the checker failed (see report.json). Translate the book again to check them; no part is translated twice.",
+      "✅ <b>Translation finished</b>\n\n<blockquote>Fixed 0 parts\n1 still have problems (see report.json)\n3 parts were not checked: the checker failed (see report.json)</blockquote>\n\nTranslate the book again to check them; no part is translated twice.",
     );
   });
 });
@@ -72,7 +72,8 @@ describe("sendEpub", () => {
     expect(api.sendDocument).not.toHaveBeenCalled();
     expect(api.sendMessage).toHaveBeenCalledWith(
       5,
-      "Done → https://t.me/c/1/2/3",
+      "✅ <b>Done</b> → https://t.me/c/1/2/3",
+      { parse_mode: "HTML" },
     );
   });
 
@@ -95,10 +96,10 @@ describe("sendEpub", () => {
   });
 });
 
-describe("usageText", () => {
+describe("usageLines", () => {
   it("sums the tokens Claude read and wrote, with the cost at API prices", () => {
     expect(
-      usageText({
+      usageLines({
         calls: 120,
         input: 1000,
         output: 350_000,
@@ -106,21 +107,27 @@ describe("usageText", () => {
         cacheRead: 1_000_000,
         costUsd: 4.1,
       }),
-    ).toBe(
-      "Claude: 120 calls, 1.2M tokens in, 350K out, ≈$4.10 at API prices.",
-    );
+    ).toEqual([
+      "Claude: 120 calls",
+      "1.2M tokens in · 350K out",
+      "≈$4.10 at API prices",
+    ]);
   });
 });
 
 describe("progressText", () => {
   it("shows the parts done and, once Claude was called, the usage so far", () => {
-    expect(progressText("Book", { done: 0, total: 80 })).toBe(
-      "Translating «Book»: 0 of 80 parts.",
+    expect(progressText("Book", { done: 0, total: 80, ran: 0 })).toBe(
+      "🌐 <b>Translating «Book»</b>\n0 of 80 parts",
+    );
+    expect(progressText("Book", { done: 0, total: 80, ran: 0 }, 12)).toBe(
+      "🌐 <b>Translating «Book»</b>\n0 of 80 parts · ≈12 min left",
     );
     expect(
       progressText("Book", {
         done: 3,
         total: 80,
+        ran: 3,
         usage: {
           calls: 4,
           input: 0,
@@ -131,7 +138,7 @@ describe("progressText", () => {
         },
       }),
     ).toBe(
-      "Translating «Book»: 3 of 80 parts.\nClaude: 4 calls, 30K tokens in, 9K out, ≈$0.20 at API prices.",
+      "🌐 <b>Translating «Book»</b>\n3 of 80 parts\n\n<blockquote>Claude: 4 calls\n30K tokens in · 9K out\n≈$0.20 at API prices</blockquote>",
     );
   });
 });

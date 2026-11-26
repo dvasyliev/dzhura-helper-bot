@@ -1,13 +1,12 @@
 import { Composer, InlineKeyboard, type Context } from "grammy";
-import { readdir } from "node:fs/promises";
-import { message } from "./features/audiobook/deliver.ts";
+import { bold, escape, HTML, problem } from "./format.ts";
 import {
-  BOOKS_DIR,
   MAX_FOUND,
   loadBook,
+  shelf,
+  type ShelfBook,
 } from "./features/audiobook/library.ts";
-import { findBooks } from "./features/audiobook/text.ts";
-import type { Book } from "./features/book/epub.ts";
+import { findBooks, shelfLabel } from "./features/audiobook/text.ts";
 import { bookInput, type Input } from "./input.ts";
 
 /** Book folders offered by the last search; buttons refer to them by index. */
@@ -28,27 +27,33 @@ export function bookSearch(show: (ctx: Context, input: Input) => unknown) {
       /https?:\/\/|youtu\.?be/.test(text)
     )
       return next();
-    const folders = await readdir(BOOKS_DIR, { withFileTypes: true }).catch(
-      () => [],
-    );
-    found = findBooks(
-      text,
-      folders.filter((f) => f.isDirectory()).map((f) => f.name),
-    ).slice(0, MAX_FOUND);
+    found = findBooks(text, await shelf()).slice(0, MAX_FOUND);
     if (!found.length)
-      return ctx.reply("No such book yet. Send the EPUB or PDF.");
+      return ctx.reply(
+        `⚠️ ${bold("No such book yet")}\nSend the EPUB or PDF.`,
+        HTML,
+      );
     if (found.length === 1) {
       const keyboard = new InlineKeyboard()
         .text("Yes", "found:0")
         .text("No", "found:no");
-      return ctx.reply(`«${found[0]}»: this one?`, { reply_markup: keyboard });
+      return ctx.reply(
+        `❓ ${bold(`«${escape(shelfLabel(found[0]!))}»: this one?`)}`,
+        {
+          ...HTML,
+          reply_markup: keyboard,
+        },
+      );
     }
     const list = InlineKeyboard.from(
-      found.map((name, i) => [InlineKeyboard.text(name, `found:${i}`)]),
+      found.map((name, i) => [
+        InlineKeyboard.text(shelfLabel(name), `found:${i}`),
+      ]),
     );
-    await ctx.reply(`Which one? If it isn't here, refine the title.`, {
-      reply_markup: list,
-    });
+    await ctx.reply(
+      `❓ ${bold("Which one?")}\nIf it isn't here, refine the title.`,
+      { ...HTML, reply_markup: list },
+    );
   });
 
   composer.callbackQuery(/^found:(.+)$/, (ctx) =>
@@ -64,22 +69,24 @@ export function bookSearch(show: (ctx: Context, input: Input) => unknown) {
 export async function pressedBook(
   ctx: Context,
   folder: string | undefined,
-  use: (book: Book, folder: string) => unknown,
+  use: (book: ShelfBook, folder: string) => unknown,
 ) {
   await ctx.answerCallbackQuery();
   await ctx.editMessageReplyMarkup().catch(() => {});
   if (!folder)
     return ctx.reply(
-      "OK. Write the title or author differently, or send the EPUB or PDF.",
+      `📕 ${bold("OK")}\nWrite the title or author differently, or send the EPUB or PDF.`,
+      HTML,
     );
   try {
     const book = await loadBook(folder);
     if (!book)
       return ctx.reply(
-        `The folder «${folder}» has no EPUB or book.md. Send the book again.`,
+        `⚠️ ${bold(`The folder «${escape(folder)}» has no EPUB or book.md`)}\nSend the book again.`,
+        HTML,
       );
     await use(book, folder);
   } catch (error) {
-    await ctx.reply(`Error: ${message(error)}`);
+    await ctx.reply(`⚠️ ${bold("Error")}\n${problem(error)}`, HTML);
   }
 }

@@ -1,10 +1,11 @@
 import { Composer, type Api, type Context, type NextFunction } from "grammy";
 import type { Chat, ChatMember } from "grammy/types";
 import { config } from "../../config.ts";
-import { busyWith, startJob } from "../../jobs.ts";
-import { message } from "../audiobook/deliver.ts";
+import { busyHtml, startJob } from "../../jobs.ts";
+import { bold, escape, HTML, problem, quote } from "../../format.ts";
 import { bookFolders, syncBook } from "./books.ts";
 import { resetUnavailable } from "./group.ts";
+import { describeShelf } from "./describe.ts";
 import { syncKaraoke } from "./karaoke.ts";
 import {
   LIBRARY_FILE,
@@ -44,13 +45,20 @@ export async function privateOnly(
   await next();
 }
 
-const STOPPED = "Publishing stopped: the library group is unavailable.";
+const STOPPED = `⚠️ ${bold("Publishing stopped")}\nThe library group is unavailable.`;
 
-/** Syncs every topic, checking each still exists, and replies how it went. */
+/**
+ * First makes the missing chapter descriptions, with one status message for `show` to send and then edit; then syncs
+ * every topic, checking each still exists, and replies how it went.
+ */
 export async function publish(
   api: Api,
   reply: (text: string) => Promise<unknown>,
+  show: (text: string) => Promise<void> = async () => {},
 ): Promise<void> {
+  await describeShelf(show).catch((error) =>
+    console.error("Descriptions failed:", error),
+  );
   const folders = await bookFolders();
   const synced = async (): Promise<boolean> => {
     for (const folder of folders)
@@ -60,14 +68,14 @@ export async function publish(
   };
   await reply(
     (await synced())
-      ? `Library is up to date: ${folders.length + 1} topics.`
+      ? `✅ ${bold("Library is up to date")}\n\n${quote([`${folders.length + 1} topics`])}`
       : STOPPED,
   );
 }
 
 export const library = new Composer<Context>();
 
-/** Saves or forgets the group when the bot joins or leaves `chat`; the note for the owner, if any. */
+/** Saves or forgets the group when the bot joins or leaves `chat`; the note (HTML) for the owner, if any. */
 export function memberChange(
   chat: Chat,
   member: ChatMember,
@@ -88,35 +96,50 @@ export function memberChange(
       resetUnavailable();
       const missing = missingRights(chat.is_forum === true, member);
       return missing.length
-        ? `Library group saved, but I need: ${missing.join(", ")}.`
-        : "Library group saved.";
+        ? `⚠️ ${bold("Library group saved, but I need")}\n${escape(missing.join(", "))}`
+        : `✅ ${bold("Library group saved")}`;
     }
     if (state.chatId !== chat.id) return undefined;
     state.lastChatId = chat.id;
     delete state.chatId;
     await saveState(state, file);
-    return "Removed from the library group; results come here again.";
+    return `📚 ${bold("Removed from the library group")}\nResults come here again.`;
   });
 }
 
 library.on("my_chat_member", async (ctx) => {
   const { chat, new_chat_member: member } = ctx.myChatMember;
   const note = await memberChange(chat, member);
-  if (note) await ctx.api.sendMessage(config.ownerId, note);
+  if (note) await ctx.api.sendMessage(config.ownerId, note, HTML);
 });
 
 library.command("publish", async (ctx) => {
   if (ctx.chat.type !== "private") return;
   if ((await loadState()).chatId === undefined)
     return ctx.reply(
-      "Puts every book and song into the library group. Set it up first: create a group, turn on Topics, and add me as admin with «Manage topics», «Delete messages» and «Pin messages». Then send /publish again.",
+      `📚 ${bold("Set up the library group first")}\nPuts every book and song into the library group. Create a group, turn on Topics, and add me as admin with «Manage topics», «Delete messages» and «Pin messages». Then send /publish again.`,
+      HTML,
     );
   const started = startJob(
     "publishing the library",
-    () => publish(ctx.api, (text) => ctx.reply(text)),
+    () => {
+      let status: number | undefined;
+      const show = async (text: string) => {
+        if (status === undefined)
+          status = (await ctx.reply(text, HTML)).message_id;
+        else
+          await ctx.api
+            .editMessageText(ctx.chat.id, status, text, HTML)
+            .catch(() => {}); // Telegram refuses an edit that changes nothing
+      };
+      return publish(ctx.api, (text) => ctx.reply(text, HTML), show);
+    },
     async (error) => {
-      await ctx.reply(`Publishing failed: ${message(error)}`);
+      await ctx.reply(
+        `⚠️ ${bold("Publishing failed")}\n${problem(error)}`,
+        HTML,
+      );
     },
   );
-  if (!started) await ctx.reply(`Please wait, ${busyWith()} is in progress.`);
+  if (!started) await ctx.reply(busyHtml(), HTML);
 });

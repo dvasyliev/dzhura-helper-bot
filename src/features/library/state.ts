@@ -8,7 +8,7 @@ export const LIBRARY_FILE = "data/library.json";
 const postedSchema = z.object({
   key: z.string(),
   messageId: z.number(),
-  kind: z.enum(["text", "audio", "document", "video"]),
+  kind: z.enum(["text", "audio", "document", "photo", "video"]),
   version: z.string(),
   fileId: z.string().optional(),
 });

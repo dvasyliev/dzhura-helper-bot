@@ -38,7 +38,7 @@ export function splitChunks(book: Book): Chunk[] {
   return chunks;
 }
 
-/** Writes the translated chunks as the text of book.uk.md: front matter, then the chunks. */
+/** Writes the translated chunks as the text of the translation's book.md: front matter, then the chunks. */
 export function assemble(
   title: string,
   author: string | undefined,

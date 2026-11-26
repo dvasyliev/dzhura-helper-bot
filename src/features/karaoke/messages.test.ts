@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimate, friendly } from "./messages.ts";
+import { estimate, expectedMinutes, friendly } from "./messages.ts";
 
 describe("estimate", () => {
   it("counts the upload of each video and the second render", () => {
@@ -12,6 +12,20 @@ describe("estimate", () => {
     expect(estimate({ separated: true, youtube: false })).toBe(
       "Takes ≈1 min, both ≈2 min.",
     );
+  });
+});
+
+describe("expectedMinutes", () => {
+  it("is the longer end of the estimate, for one version or both", () => {
+    expect(
+      expectedMinutes({ separated: false, youtube: true, versions: 1 }),
+    ).toBe(4);
+    expect(
+      expectedMinutes({ separated: false, youtube: true, versions: 2 }),
+    ).toBe(6);
+    expect(
+      expectedMinutes({ separated: true, youtube: false, versions: 2 }),
+    ).toBe(2);
   });
 });
 

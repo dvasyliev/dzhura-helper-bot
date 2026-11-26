@@ -16,14 +16,25 @@ import {
 vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
 
 const t = topicHarness();
+
+function contents2(): TextItem {
+  return { key: "voice:B", kind: "text", text: "B" };
+}
 const { sync } = t;
 
-/** Message 11 was deleted and two audios sent again: the first uploaded, the second by its file id. */
+/** The files of album `n` sent so far: an InputFile or a file id each. */
+function albumMedia(n: number): unknown[] {
+  const call = t.api.sendMediaGroup.mock.calls.at(n)!;
+  return (call[1] as { media: unknown }[]).map((m) => m.media);
+}
+
+/** Message 11 was deleted and two audios sent again as an album: the first uploaded, the second by its file id. */
 function expectResent(secondFileId: string) {
   expect(t.api.deleteMessage).toHaveBeenCalledWith(CHAT, 11);
-  expect(t.api.sendAudio).toHaveBeenCalledTimes(2);
-  expect(t.api.sendAudio.mock.calls[0]![1]).toBeInstanceOf(InputFile);
-  expect(t.api.sendAudio.mock.calls[1]![1]).toBe(secondFileId);
+  expect(t.api.sendMediaGroup).toHaveBeenCalledTimes(1);
+  const [first, second] = albumMedia(0);
+  expect(first).toBeInstanceOf(InputFile);
+  expect(second).toBe(secondFileId);
 }
 
 describe("syncTopic", () => {
@@ -49,7 +60,6 @@ describe("syncTopic", () => {
     expect(options).toMatchObject({
       message_thread_id: 5,
       title: "a",
-      performer: "Book",
     });
     expect(result.changed).toEqual(["contents", "a"]);
     expect(result.link("a")).toBe("https://t.me/c/1234567890/5/101");
@@ -86,7 +96,7 @@ describe("syncTopic", () => {
     expect(t.api.editMessageMedia).toHaveBeenCalledWith(
       CHAT,
       10,
-      expect.objectContaining({ type: "audio", title: "a", performer: "Book" }),
+      expect.objectContaining({ type: "audio", title: "a" }),
     );
     expect(t.api.sendAudio).not.toHaveBeenCalled();
     expect(result.changed).toEqual(["a"]);
@@ -198,8 +208,8 @@ describe("syncTopic", () => {
 
     expect(t.api.createForumTopic).toHaveBeenCalledWith(CHAT, "Author — Title");
     expect(state.topics.book!.threadId).toBe(5);
-    expect(t.api.sendAudio.mock.calls.at(-2)![1]).toBe("f-a");
-    expect(t.api.sendAudio.mock.calls.at(-1)![2]).toMatchObject({
+    expect(albumMedia(-1)[0]).toBe("f-a");
+    expect(t.api.sendMediaGroup.mock.calls.at(-1)![2]).toEqual({
       message_thread_id: 5,
     });
     expect(result.changed).toEqual(["a", "b"]);
@@ -285,9 +295,51 @@ describe("syncTopic", () => {
       (call) => (call as unknown[])[0] === 7,
     );
     expect(notes).toEqual([
-      [7, "Too big for Telegram (over 50 MB), not posted: /books/big.mp3"],
+      [
+        7,
+        "⚠️ <b>Too big for Telegram</b>\nOver 50 MB, not posted: <code>/books/big.mp3</code>",
+        { parse_mode: "HTML" },
+      ],
     ]);
     expect(state.topics.book!.tooBig).toEqual({ big: version(big) });
+  });
+
+  it("sends audios in a row as albums of up to 10", async () => {
+    const state: LibraryState = { chatId: CHAT, topics: {} };
+    const audios = Array.from({ length: 12 }, (_, i) => audio(`a${i}`));
+    const result = await sync(state, [contents, ...audios]);
+
+    const albums = t.api.sendMediaGroup.mock.calls.map(
+      (call) => (call as unknown as [number, unknown[]])[1].length,
+    );
+    expect(albums).toEqual([10, 2]);
+    expect(t.api.sendMediaGroup.mock.calls[0]![2]).toEqual({
+      message_thread_id: 5,
+    });
+    expect(t.api.sendAudio).not.toHaveBeenCalled();
+    expect(result.changed).toHaveLength(13);
+    expect(state.topics.book!.messages.map((m) => m.key)).toEqual([
+      "contents",
+      ...audios.map((a) => a.key),
+    ]);
+    expect(state.topics.book!.messages[1]).toMatchObject({
+      kind: "audio",
+      fileId: "f101",
+    });
+  });
+
+  it("sends a lone audio on its own", async () => {
+    const state: LibraryState = { chatId: CHAT, topics: {} };
+    await sync(state, [contents, audio("a"), audio("b"), contents2()]);
+    await sync(state, [
+      contents,
+      audio("a"),
+      audio("b"),
+      contents2(),
+      audio("c"),
+    ]);
+    expect(t.api.sendMediaGroup).toHaveBeenCalledTimes(1);
+    expect(t.api.sendAudio).toHaveBeenCalledTimes(1);
   });
 
   it("needs the group's chat id", async () => {

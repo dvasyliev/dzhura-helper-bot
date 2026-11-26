@@ -8,13 +8,11 @@ const BOOK = {
   title: "The Art of Learning",
   author: "Josh Waitzkin",
   chapters: [{ title: "One", text: "The quick brown fox jumps." }],
+  folder: FOLDER,
 };
 
-vi.mock("node:fs/promises", () => ({
-  readdir: vi.fn(async () => [{ name: FOLDER, isDirectory: () => true }]),
-}));
 vi.mock("./features/audiobook/library.ts", () => ({
-  BOOKS_DIR: "data/audiobook",
+  shelf: vi.fn(async () => [FOLDER]),
   MAX_FOUND: 5,
   loadBook: vi.fn(async () => BOOK),
 }));
@@ -51,7 +49,9 @@ describe("bookSearch", () => {
     await send(composer, api, {
       message: { message_id: 1, date: 0, chat, from, text: "art of learning" },
     });
-    expect(api.sendMessage.mock.calls[0]).toContain(`«${FOLDER}»: this one?`);
+    expect(api.sendMessage.mock.calls[0]).toContain(
+      `❓ <b>«${FOLDER}»: this one?</b>`,
+    );
 
     await send(composer, api, {
       callback_query: {

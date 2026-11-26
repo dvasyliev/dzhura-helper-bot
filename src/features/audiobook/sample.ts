@@ -1,5 +1,5 @@
 // Voices the first N words of a book with every voice of its language, to compare them.
-// The book is a folder in data/audiobook; samples go to data/voice-samples/<language>/<voice>.mp3.
+// The book is a folder in data/books; samples go to data/voice-samples/<language>/<voice>.mp3.
 // Usage: npm run sample -- "Жуль Верн - Діти капітана Гранта" [words=150]
 import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,11 +10,9 @@ import { voiceChapters, voicesFor } from "./voice.ts";
 
 const [folder, wordsArg = "150"] = process.argv.slice(2);
 if (!folder)
-  throw new Error(
-    'Usage: npm run sample -- "<folder in data/audiobook>" [words]',
-  );
+  throw new Error('Usage: npm run sample -- "<folder in data/books>" [words]');
 
-const dir = path.join("data/audiobook", folder);
+const dir = path.join("data/books", folder);
 const epub = (await readdir(dir)).find((f) =>
   f.toLowerCase().endsWith(".epub"),
 );

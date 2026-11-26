@@ -185,7 +185,7 @@ function htmlToText(html: string): string {
     .join("\n");
 }
 
-function attr(tag: string, name: string): string {
+export function attr(tag: string, name: string): string {
   return (
     tag.match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, "i"))?.[1] ?? ""
   );

@@ -1,23 +1,25 @@
 import { Composer, InlineKeyboard, type Context } from "grammy";
-import { readdir } from "node:fs/promises";
-import { busyWith, startJob } from "../../jobs.ts";
+import { bold, code, escape, HTML, problem, quote } from "../../format.ts";
+import { busyHtml, busyWith, startJob } from "../../jobs.ts";
 import { pressedBook } from "../../search.ts";
 import { findFolder, folderKey } from "../translate/button.ts";
 import type { Feature } from "../types.ts";
-import { notify, message, voiceBook } from "./deliver.ts";
+import { notify, voiceBook } from "./deliver.ts";
 import type { Book } from "../book/epub.ts";
 import {
-  BOOKS_DIR,
   chapters,
   loadBook,
+  shelf,
   unfinished,
   voicedCount,
   type Chapter,
+  type ShelfBook,
 } from "./library.ts";
 import {
   bookName,
   bookPaths,
   bookLanguage,
+  shelfLabel,
   forecast,
   parseNumbers,
   voicingTime,
@@ -35,14 +37,15 @@ import {
 /** Chapters voiced in one go unless the whole book is asked for. */
 const BATCH = 5;
 const TYPE_RANGE = "Or type chapter numbers, for example 10-20.";
-const ONLY_LANGUAGES = "I voice only Ukrainian and English books.";
+const ONLY_LANGUAGES = `⚠️ ${bold("I voice only Ukrainian and English books")}`;
+export const SEND_AGAIN = `⚠️ ${bold("This book is no longer here")}\nSend it again.`;
 
 /** The last book sent, waiting for the voice to be chosen. */
-let pending: Book | undefined;
+let pending: ShelfBook | undefined;
 /** Book and voice waiting for how many chapters to voice: a button or typed numbers («10-20»). */
-let choosing: { book: Book; voice: Voice } | undefined;
+let choosing: { book: ShelfBook; voice: Voice } | undefined;
 /** The book being voiced or voiced last, for /regen. */
-let current: { book: Book; voice: Voice } | undefined;
+let current: { book: ShelfBook; voice: Voice } | undefined;
 /** Book folders offered by the menu; buttons refer to them by index. */
 let found: string[] = [];
 
@@ -59,13 +62,15 @@ composer.callbackQuery(/^voice:(.+)$/, async (ctx) => {
   await ctx.editMessageReplyMarkup().catch(() => {});
   if (todo.length) {
     choosing = { book, voice };
-    return ctx.reply(`How many chapters to voice? ${TYPE_RANGE}`, {
-      reply_markup: amountKeyboard(book, voice),
-    });
+    return ctx.reply(
+      `❓ ${bold("How many chapters to voice?")}\n${TYPE_RANGE}`,
+      { ...HTML, reply_markup: amountKeyboard(book, voice) },
+    );
   }
   current = { book, voice };
   await ctx.reply(
-    `«${book.title}» is already voiced by «${voice.name}». To re-voice a chapter: /regen 5`,
+    `✅ ${bold(`«${escape(book.title)}» is already voiced by «${escape(voice.name)}»`)}\nTo re-voice a chapter: /regen 5`,
+    HTML,
   );
 });
 
@@ -89,12 +94,16 @@ composer.hears(/^[\d\s,–-]+$/, async (ctx, next) => {
   const numbers = parseNumbers(ctx.message!.text!);
   const asked = all.filter((c) => numbers.includes(c.index + 1));
   if (!asked.length)
-    return ctx.reply(`Chapters go from 1 to ${all.length}, for example 10-20.`);
+    return ctx.reply(
+      `⚠️ ${bold(`Chapters go from 1 to ${all.length}`)}\nFor example 10-20.`,
+      HTML,
+    );
   const left = new Set(remaining(book, voice).map((c) => c.index));
   const todo = asked.filter((c) => left.has(c.index));
   if (!todo.length)
     return ctx.reply(
-      `These chapters are already voiced by «${voice.name}». To re-voice: /regen ${ctx.message!.text}`,
+      `✅ ${bold(`These chapters are already voiced by «${escape(voice.name)}»`)}\nTo re-voice: /regen ${escape(ctx.message!.text!)}`,
+      HTML,
     );
   await start(ctx, book, voice, todo);
 });
@@ -102,7 +111,8 @@ composer.hears(/^[\d\s,–-]+$/, async (ctx, next) => {
 composer.command("regen", async (ctx) => {
   if (!current)
     return ctx.reply(
-      "Re-voices chapters of the book being voiced. First send a book and pick a voice, then /regen with chapter numbers: /regen 5 or /regen 5-7.",
+      `🎧 ${bold("Re-voice chapters")}\nRe-voices chapters of the book being voiced. First send a book and pick a voice, then /regen with chapter numbers: /regen 5 or /regen 5-7.`,
+      HTML,
     );
   const { book, voice } = current;
   const all = chapters(book);
@@ -110,29 +120,34 @@ composer.command("regen", async (ctx) => {
   const todo = all.filter((c) => numbers.includes(c.index + 1));
   if (!todo.length)
     return ctx.reply(
-      `Which chapters of «${book.title}» to re-voice with «${voice.name}»? Send /regen with numbers from 1 to ${all.length}: /regen 5 or /regen 5-7.`,
+      `❓ ${bold(`Which chapters of «${escape(book.title)}» to re-voice with «${escape(voice.name)}»?`)}\nSend /regen with numbers from 1 to ${all.length}: /regen 5 or /regen 5-7.`,
+      HTML,
     );
-  const { audioDir } = bookPaths(bookName(book), voice.name);
+  const { audioDir } = bookPaths(book.folder, voice.name);
   const chatId = ctx.chat.id;
   const regen = async () => {
     await notify(
       ctx.api,
       chatId,
-      `Re-voicing ${todo.map((c) => `«${c.name}»`).join(", ")} with «${voice.name}».`,
+      `🎧 ${bold("Re-voicing")} ${todo.map((c) => `«${escape(c.name)}»`).join(", ")} with «${escape(voice.name)}»`,
     );
     for (const c of todo) await removeAudio(audioDir, c.name);
     await voiceBook(ctx.api, chatId, book, voice, todo, "regen", {
       done: 0,
       total: todo.length,
     });
-    await notify(ctx.api, chatId, "Re-voiced.");
+    await notify(ctx.api, chatId, `✅ ${bold("Re-voiced")}`);
   };
   if (
     !startJob(`re-voicing «${book.title}»`, regen, (error) =>
-      notify(ctx.api, chatId, `Re-voicing stopped: ${message(error)}`),
+      notify(
+        ctx.api,
+        chatId,
+        `⚠️ ${bold("Re-voicing stopped")}\n${problem(error)}`,
+      ),
     )
   )
-    return ctx.reply(`Please wait, ${busyWith()} is in progress.`);
+    return ctx.reply(busyHtml(), HTML);
 });
 
 // A book from the «Not finished» list of the menu.
@@ -140,7 +155,7 @@ composer.callbackQuery(/^book:(.+)$/, (ctx) =>
   pressedBook(ctx, found[Number(ctx.match[1])], (book) => {
     const language = languageOf(book);
     if (language !== "uk" && language !== "en")
-      return ctx.reply(ONLY_LANGUAGES);
+      return ctx.reply(ONLY_LANGUAGES, HTML);
     return offer(ctx, book, language);
   }),
 );
@@ -158,8 +173,9 @@ export const audiobook: Feature = {
   composer,
   actions: async (input) => {
     if (input.kind !== "book") return;
-    const { book, folder, language } = input;
+    const { folder, language } = input;
     if (language !== "uk" && language !== "en") return;
+    const book = { ...input.book, folder };
     return {
       buttons: [{ text: "🎧 Voice", data: `voice-book:${folderKey(folder)}` }],
       lines: voicedSoFar(book, chapters(book), voicesFor(language)),
@@ -171,37 +187,36 @@ export const audiobook: Feature = {
 // The card's «Voice» button: the voices for the book in the folder the button names.
 composer.callbackQuery(/^voice-book:([0-9a-f]+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
-  const folders = await readdir(BOOKS_DIR, { withFileTypes: true }).catch(
-    () => [],
-  );
-  const folder = findFolder(
-    ctx.match[1],
-    folders.filter((f) => f.isDirectory()).map((f) => f.name),
-  );
+  const folder = findFolder(ctx.match[1], await shelf());
   const book = folder
     ? await loadBook(folder).catch(() => undefined)
     : undefined;
   const language = book && languageOf(book);
   if (!book || (language !== "uk" && language !== "en"))
-    return ctx.reply("This book is no longer here; send it again.");
+    return ctx.reply(SEND_AGAIN, HTML);
   await ctx.editMessageReplyMarkup().catch(() => {});
   await offer(ctx, book, language);
 });
 
 /** Voices `todo` in the background, then offers the rest of the book if any is left. */
-async function start(ctx: Context, book: Book, voice: Voice, todo: Chapter[]) {
+async function start(
+  ctx: Context,
+  book: ShelfBook,
+  voice: Voice,
+  todo: Chapter[],
+) {
   const chatId = ctx.chat!.id;
   const total = chapters(book).length;
   const range =
     todo.length > 1
-      ? `from «${todo[0].name}» to «${todo.at(-1)!.name}»`
-      : `«${todo[0].name}»`;
+      ? `from «${escape(todo[0].name)}» to «${escape(todo.at(-1)!.name)}»`
+      : `«${escape(todo[0].name)}»`;
   const voiceTodo = async () => {
     // From the job, so it comes before the status message voiceBook sends.
     await notify(
       ctx.api,
       chatId,
-      `Voicing with «${voice.name}» ${range}.\n${estimate(todo, voice)}`,
+      `🎧 ${bold(`Voicing with «${escape(voice.name)}»`)}\n${range}\n\n${quote(estimate(todo, voice))}`,
     );
     await voiceBook(ctx.api, chatId, book, voice, todo, "new", {
       done: total - remaining(book, voice).length,
@@ -212,14 +227,14 @@ async function start(ctx: Context, book: Book, voice: Voice, todo: Chapter[]) {
       return notify(
         ctx.api,
         chatId,
-        `Done: «${book.title}» is fully voiced. Files: ${bookPaths(bookName(book), voice.name).audioDir}`,
+        `✅ ${bold(`«${escape(book.title)}» is fully voiced`)}\nFiles: ${code(escape(bookPaths(book.folder, voice.name).audioDir))}`,
       );
     choosing = { book, voice };
     await ctx.api
       .sendMessage(
         chatId,
-        `Done ${total - left} of ${total}. Voice more? ${TYPE_RANGE}`,
-        { reply_markup: amountKeyboard(book, voice) },
+        `❓ ${bold("Voice more?")}\n\n${quote([`Done ${total - left} of ${total}`])}\n\n${TYPE_RANGE}`,
+        { ...HTML, reply_markup: amountKeyboard(book, voice) },
       )
       .catch((error) => console.error("sendMessage failed:", error));
   };
@@ -227,11 +242,12 @@ async function start(ctx: Context, book: Book, voice: Voice, todo: Chapter[]) {
     notify(
       ctx.api,
       chatId,
-      `Voicing stopped: ${message(error)}\nTo continue from here, send the book again or type its title.`,
+      `⚠️ ${bold("Voicing stopped")}\n${problem(error)}\n\nTo continue from here, send the book again or type its title.`,
     );
   if (!startJob(`voicing «${book.title}»`, voiceTodo, stopped)) {
-    const busy = `Please wait, ${busyWith()} is in progress.`;
-    return ctx.callbackQuery ? ctx.answerCallbackQuery(busy) : ctx.reply(busy);
+    return ctx.callbackQuery
+      ? ctx.answerCallbackQuery(`Please wait, ${busyWith()} is in progress.`)
+      : ctx.reply(busyHtml(), HTML);
   }
   pending = undefined;
   choosing = undefined;
@@ -243,7 +259,7 @@ async function start(ctx: Context, book: Book, voice: Voice, todo: Chapter[]) {
 }
 
 /** «5 chapters · ≈3 min» and «The rest (66) · ≈1 h», for the chapters `voice` has not voiced yet. */
-function amountKeyboard(book: Book, voice: Voice): InlineKeyboard {
+function amountKeyboard(book: ShelfBook, voice: Voice): InlineKeyboard {
   const todo = remaining(book, voice);
   const time = (list: Chapter[]) =>
     ` · ≈${voicingTime(
@@ -263,24 +279,29 @@ function amountKeyboard(book: Book, voice: Voice): InlineKeyboard {
   return keyboard.text(`${rest}${time(todo)}`, `amount:all`);
 }
 
-function remaining(book: Book, voice: Voice): Chapter[] {
-  const { audioDir } = bookPaths(bookName(book), voice.name);
+function remaining(book: ShelfBook, voice: Voice): Chapter[] {
+  const { audioDir } = bookPaths(book.folder, voice.name);
   return chapters(book).filter((c) => !isVoiced(audioDir, c.name));
 }
 
 /** The menu button: what to send, and the most recently touched books that are not voiced to the end. */
 async function openMenu(ctx: Context) {
-  const text =
-    "Send an EPUB or PDF book in Ukrainian or English and I'll voice it chapter by chapter. Or type the title or author of a book you sent before.";
+  const text = `🎧 ${bold("Create an audiobook")}\nSend an EPUB or PDF book in Ukrainian or English and I'll voice it chapter by chapter. Or type the title or author of a book you sent before.`;
   const books = await unfinished();
   found = books.map((b) => b.folder);
-  if (!books.length) return ctx.reply(text);
+  if (!books.length) return ctx.reply(text, HTML);
   const keyboard = InlineKeyboard.from(
     books.map((b, i) => [
-      InlineKeyboard.text(`${b.folder} · ${b.done}/${b.total}`, `book:${i}`),
+      InlineKeyboard.text(
+        `${shelfLabel(b.folder)} · ${b.done}/${b.total}`,
+        `book:${i}`,
+      ),
     ]),
   );
-  await ctx.reply(`${text}\n\nNot finished:`, { reply_markup: keyboard });
+  await ctx.reply(`${text}\n\nNot finished:`, {
+    ...HTML,
+    reply_markup: keyboard,
+  });
 }
 
 function languageOf(book: Book): BookLanguage | undefined {
@@ -288,30 +309,35 @@ function languageOf(book: Book): BookLanguage | undefined {
 }
 
 /** What is already voiced, the forecast and the buttons with the voices of the book's language; an English book can also be translated. */
-export async function offer(ctx: Context, book: Book, language: Language) {
+export async function offer(ctx: Context, book: ShelfBook, language: Language) {
   pending = book;
   choosing = undefined;
   const all = chapters(book);
   const voices = voicesFor(language);
-  const lines = [
-    `${bookName(book)}: ${all.length} chapters.`,
-    ...voicedSoFar(book, all, voices),
-    ...(voices.some((v) => {
-      const left = remaining(book, v).length;
-      return left && left < all.length;
-    })
-      ? ["Pick the same voice to continue where it stopped."]
-      : []),
-    estimate(all, voices[0]),
-    "Which voice?",
-  ];
+  const resume = voices.some((v) => {
+    const left = remaining(book, v).length;
+    return left && left < all.length;
+  });
+  const text = [
+    `❓ ${bold("Which voice?")}\n${escape(bookName(book))}`,
+    quote([
+      `${all.length} chapters`,
+      ...voicedSoFar(book, all, voices),
+      ...estimate(all, voices[0]),
+    ]),
+    ...(resume ? ["Pick the same voice to continue where it stopped."] : []),
+  ].join("\n\n");
   const keyboard = new InlineKeyboard();
   for (const voice of voices) keyboard.text(voice.name, `voice:${voice.id}`);
-  await ctx.reply(lines.join("\n"), { reply_markup: keyboard });
+  await ctx.reply(text, { ...HTML, reply_markup: keyboard });
 }
 
-/** «Already voiced by «Oksana»: 12 of 71.» for each voice that has audio of this book. */
-function voicedSoFar(book: Book, all: Chapter[], voices: Voice[]): string[] {
+/** «Already voiced by «Oksana»: 12 of 71» (HTML) for each voice that has audio of this book. */
+function voicedSoFar(
+  book: ShelfBook,
+  all: Chapter[],
+  voices: Voice[],
+): string[] {
   const done = voices
     .map((voice) => ({
       voice,
@@ -319,13 +345,15 @@ function voicedSoFar(book: Book, all: Chapter[], voices: Voice[]): string[] {
     }))
     .filter((d) => d.count);
   return done.map(
-    (d) => `Already voiced by «${d.voice.name}»: ${d.count} of ${all.length}.`,
+    (d) =>
+      `Already voiced by «${escape(d.voice.name)}»: ${d.count} of ${all.length}`,
   );
 }
 
-function estimate(todo: Chapter[], voice: Voice): string {
+/** The forecast's lines, for a quote. */
+function estimate(todo: Chapter[], voice: Voice): string[] {
   return forecast(
     todo.map((c) => c.text.length),
     voice.provider,
-  );
+  ).split("\n");
 }

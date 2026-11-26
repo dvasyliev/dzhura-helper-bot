@@ -1,11 +1,12 @@
 import { autoRetry } from "@grammyjs/auto-retry";
-import { Bot, InlineKeyboard, type Context } from "grammy";
+import { Bot, InlineKeyboard, InputFile, type Context } from "grammy";
 import { cardFor, routeText, type Card } from "./card.ts";
 import { config } from "./config.ts";
 import { FEATURES } from "./features/index.ts";
 import { label, menuCommands } from "./commands.ts";
 import { library, privateOnly } from "./features/library/index.ts";
 import type { Feature } from "./features/types.ts";
+import { bold, escape, HTML } from "./format.ts";
 import { receiveBook, type Input } from "./input.ts";
 import { bookSearch } from "./search.ts";
 
@@ -26,7 +27,10 @@ export function createBot(): Bot {
     .catch((error) => console.error("setMyCommands failed:", error));
 
   bot.command(["start", "menu"], (ctx) =>
-    ctx.reply("What shall we do?", { reply_markup: menu() }),
+    ctx.reply(`❓ ${bold("What shall we do?")}`, {
+      ...HTML,
+      reply_markup: menu(),
+    }),
   );
   for (const feature of FEATURES)
     bot.command(feature.id, (ctx) => open(ctx, feature));
@@ -55,9 +59,10 @@ export function createBot(): Bot {
 
   // Nothing above took the message.
   bot.on("message", (ctx) =>
-    ctx.reply("I don't know what to do with this. Pick an action:", {
-      reply_markup: menu(),
-    }),
+    ctx.reply(
+      `⚠️ ${bold("I don't know what to do with this")}\nPick an action:`,
+      { ...HTML, reply_markup: menu() },
+    ),
   );
 
   bot.catch((err) => console.error(err.error));
@@ -71,19 +76,35 @@ async function show(ctx: Context, input: Input) {
   return answer(ctx, await cardFor(input, FEATURES));
 }
 
-function answer(ctx: Context, reply: Card) {
+async function answer(ctx: Context, reply: Card) {
   if (reply.kind === "ask") return reply.ask(ctx);
-  if (reply.kind === "card")
-    return ctx.reply(reply.text, { reply_markup: reply.keyboard });
-  return ctx.reply("Nothing I can do with this yet. Pick an action:", {
-    reply_markup: menu(),
-  });
+  if (reply.kind === "card") {
+    const options = { ...HTML, reply_markup: reply.keyboard };
+    if (reply.photo) {
+      try {
+        return await ctx.replyWithPhoto(new InputFile(reply.photo), {
+          ...options,
+          caption: reply.text,
+        });
+      } catch (error) {
+        console.error("Sending the cover failed:", error); // the card goes out without it
+      }
+    }
+    return ctx.reply(reply.text, options);
+  }
+  return ctx.reply(
+    `⚠️ ${bold("Nothing I can do with this yet")}\nPick an action:`,
+    { ...HTML, reply_markup: menu() },
+  );
 }
 
 function open(ctx: Context, feature: Feature) {
   if (feature.composer && feature.open) return feature.open(ctx);
   return ctx.reply(
-    feature.composer ? (feature.hint ?? feature.title) : NOT_READY,
+    feature.composer
+      ? (feature.hint ?? bold(escape(feature.title)))
+      : `⚠️ ${bold(NOT_READY)}`,
+    HTML,
   );
 }
 

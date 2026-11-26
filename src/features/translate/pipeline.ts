@@ -22,6 +22,8 @@ import {
   paragraphFixInput,
   problemParagraphs,
 } from "./fix.ts";
+import { describeAll } from "../audiobook/descriptions.ts";
+import { chapters } from "../audiobook/library.ts";
 import { LimitError, runClaude, type Usage } from "./claude.ts";
 import { LANGUAGE, langFile, termMatch, type TermMatch } from "./lang.ts";
 import {
@@ -31,15 +33,23 @@ import {
   type Glossary,
 } from "./glossary.ts";
 
-/** Per-book translation folders, named `<Author - Title>` after the source. */
-export const TRANSLATE_DIR = "data/translate";
+/** The source book as Markdown, in the translation folder; book.md there is the finished translation. */
+export const SOURCE_MD = "source.md";
 
 const PROMPT = langFile(LANGUAGE, "prompt.md");
 const FIX_PROMPT = langFile(LANGUAGE, "fix-prompt.md");
 const FIX_PARAGRAPHS_PROMPT = langFile(LANGUAGE, "fix-paragraphs-prompt.md");
 
-/** Parts done of all, and Claude's usage for the book so far (from the first part done in this run). */
-export type Progress = { done: number; total: number; usage?: Usage };
+/**
+ * Parts done of all; `ran` of them were translated or checked in this run (the pace counts only these), and
+ * Claude's usage for the book so far.
+ */
+export type Progress = {
+  done: number;
+  total: number;
+  ran: number;
+  usage?: Usage;
+};
 
 type Run = typeof runClaude;
 
@@ -52,7 +62,15 @@ const HARD_KINDS = new Set<Problem["kind"]>(["latin", "russian-letters"]);
 const MAX_FAILED_CHECKS = 3;
 
 /** Chunks translated at once, each by its own `claude -p`. */
-const PARALLEL = 8;
+export const PARALLEL = 8;
+
+/** Measured on 2026-11-26: a 6000-character chunk takes ≈40 s in one `claude -p`, check and fixes included. */
+const CHUNK_SECONDS = 40;
+
+/** Rough minutes to translate `chunks` chunks, PARALLEL at a time, before any pace is known. */
+export function translateMinutes(chunks: number): number {
+  return (Math.ceil(chunks / PARALLEL) * CHUNK_SECONDS) / 60;
+}
 
 type Options = {
   dir: string;
@@ -60,7 +78,9 @@ type Options = {
   onLimit(resetAt: Date): Promise<void>;
   run?: Run;
   sleep?: (ms: number) => Promise<void>;
-  pandoc?: (md: string, epub: string) => Promise<boolean>;
+  pandoc?: (md: string, epub: string, cover?: string) => Promise<boolean>;
+  /** The original's cover image, put on the EPUB. */
+  cover?: string;
   check?: (input: CheckInput) => Promise<CheckResult>;
   candidates?: typeof candidates;
 };
@@ -90,11 +110,18 @@ function sleepFor(ms: number): Promise<void> {
 }
 
 /** Builds the EPUB with pandoc; false when pandoc is not installed. */
-function runPandoc(md: string, epub: string): Promise<boolean> {
+function runPandoc(md: string, epub: string, cover?: string): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       "pandoc",
-      [md, "-o", epub, "--metadata", `lang=${LANGUAGE}`],
+      [
+        md,
+        "-o",
+        epub,
+        "--metadata",
+        `lang=${LANGUAGE}`,
+        ...(cover ? [`--epub-cover-image=${cover}`] : []),
+      ],
       {
         stdio: ["ignore", "ignore", "pipe"],
       },
@@ -221,7 +248,7 @@ export async function translateBook(
   };
 
   await mkdir(join(dir, "chunks"), { recursive: true });
-  await writeFile(join(dir, BOOK_MD), toMarkdown(source));
+  await writeFile(join(dir, SOURCE_MD), toMarkdown(source));
 
   const glossaryFile = join(dir, "glossary.json");
   const saved = await readIfExists(glossaryFile);
@@ -230,7 +257,7 @@ export async function translateBook(
   else {
     glossary = await buildGlossary(
       source,
-      join(dir, BOOK_MD),
+      join(dir, SOURCE_MD),
       call,
       findCandidates,
     );
@@ -329,11 +356,12 @@ export async function translateBook(
   const chunks = splitChunks(source);
   const translated: string[] = [];
   let finished = 0;
+  let ran = 0;
   let failedInRow = 0;
   let stop: unknown;
 
-  /** Translates, checks and saves chunk `index`, unless it is already done. */
-  const translateChunk = async (index: number) => {
+  /** Translates, checks and saves chunk `index`, unless it is already done; true when it did any work. */
+  const translateChunk = async (index: number): Promise<boolean> => {
     const chunk = chunks[index]!;
     const name = String(index + 1).padStart(4, "0");
     const chunkFile = join(dir, "chunks", `${name}.md`);
@@ -343,7 +371,7 @@ export async function translateBook(
     const recheck = unchecked(report.find((r) => r.chunk === name));
     if (done !== undefined && !recheck) {
       translated[index] = done;
-      return;
+      return false;
     }
 
     const terms = termsIn(chunk.text, glossary.terms, match);
@@ -362,6 +390,7 @@ export async function translateBook(
         `The chunk checker failed on ${MAX_FAILED_CHECKS} parts in a row (${detail}); the Python side looks broken. The parts are saved and get checked when the translation continues`,
       );
     }
+    return true;
   };
 
   /** Takes the next chunk until none is left; the first error stops new chunks, the running ones finish. */
@@ -370,7 +399,7 @@ export async function translateBook(
     while (stop === undefined && next < chunks.length) {
       const index = next++;
       try {
-        await translateChunk(index);
+        if (await translateChunk(index)) ran += 1;
       } catch (error) {
         stop ??= error;
         return;
@@ -379,6 +408,7 @@ export async function translateBook(
       await opts.onProgress({
         done: finished,
         total: chunks.length,
+        ran,
         usage: { ...usage },
       });
     }
@@ -388,14 +418,21 @@ export async function translateBook(
   await saveReport();
 
   const text = assemble(glossary.title, glossary.author, translated);
-  const md = join(dir, "book.uk.md");
+  const md = join(dir, BOOK_MD);
   await writeFile(md, text);
-  const epubFile = join(dir, "book.uk.epub");
-  const epub = (await pandoc(md, epubFile)) ? epubFile : undefined;
+  const epubFile = join(dir, "book.epub");
+  const epub = (await pandoc(md, epubFile, opts.cover)) ? epubFile : undefined;
+
+  const result = parseMarkdown(text);
+  // A failure here never fails the translation: a track without a description just has no caption.
+  await describeAll(dir, result.title, chapters(result), {
+    run,
+    onUsage: addUsage,
+  }).catch((error) => console.error("Descriptions failed:", error));
 
   await savingUsage;
   return {
-    book: parseMarkdown(text),
+    book: result,
     epub,
     usage,
     report: {

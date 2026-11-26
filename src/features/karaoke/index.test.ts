@@ -117,7 +117,8 @@ describe("karaoke done message", () => {
     await vi.waitFor(() =>
       expect(api.sendMessage).toHaveBeenCalledWith(
         7,
-        "Done → https://t.me/c/1/2/3 (not added to the playlist)",
+        "✅ <b>Done</b> → https://t.me/c/1/2/3 (not added to the playlist)",
+        { parse_mode: "HTML" },
       ),
     );
   });

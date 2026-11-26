@@ -1,3 +1,4 @@
+import { duration } from "../../eta.ts";
 /** Longer titles are cut so file names stay readable and within file system limits. */
 const MAX_NAME_CHARS = 100;
 
@@ -17,13 +18,39 @@ export function bookName(book: { title: string; author?: string }): string {
   return book.author ? `${book.author} - ${book.title}` : book.title;
 }
 
-/** A book's folder: its EPUB (or PDF and book.md), prepared texts (text/), audio per voice (audio/<voice>/) and stress dictionary. */
-export function bookDir(name: string): string {
-  return `data/audiobook/${safeFilename(name)}`;
+/**
+ * Every book's folder is here: its EPUB (or PDF and book.md), prepared texts (text/), audio per voice
+ * (audio/<voice>/), stress dictionary, and its translation in `translation/`, laid out the same way.
+ */
+export const BOOKS_DIR = "data/books";
+const TRANSLATION = "translation";
+
+/** A book's folder is its path under BOOKS_DIR: «X» for an original, «X/translation» for its translation. */
+export function translationFolder(folder: string): string {
+  return `${folder}/${TRANSLATION}`;
 }
 
-export function bookPaths(name: string, voiceName: string) {
-  const dir = bookDir(name);
+/** The original's folder of `folder`, which may be its translation's. */
+export function originalFolder(folder: string): string {
+  return folder.endsWith(`/${TRANSLATION}`)
+    ? folder.slice(0, -TRANSLATION.length - 1)
+    : folder;
+}
+
+/** How a book folder is shown on a button: «X» or «X · 🌐 Ukrainian» for its translation. */
+export function shelfLabel(folder: string): string {
+  const original = originalFolder(folder);
+  return original === folder ? folder : `${original} · 🌐 Ukrainian`;
+}
+
+/** The folder a newly sent book goes to, named after it. */
+export function bookDir(name: string): string {
+  return `${BOOKS_DIR}/${safeFilename(name)}`;
+}
+
+/** Where the texts, a voice's audio and the stress files of the book in `folder` are. */
+export function bookPaths(folder: string, voiceName: string) {
+  const dir = `${BOOKS_DIR}/${folder}`;
   return {
     textDir: `${dir}/text`,
     audioDir: `${dir}/audio/${safeFilename(voiceName)}`,
@@ -98,15 +125,14 @@ export function forecast(chapterChars: number[], provider: Provider): string {
   ].join("\n");
 }
 
-/** Time to voice `chars` characters, e.g. «3 min». */
-export function voicingTime(chars: number, provider: Provider): string {
-  return duration((chars * SPEED[provider].secondsPerChar) / 60);
+/** Minutes to voice `chars` characters. */
+export function voicingMinutes(chars: number, provider: Provider): number {
+  return (chars * SPEED[provider].secondsPerChar) / 60;
 }
 
-export function duration(minutes: number): string {
-  const m = Math.max(1, Math.round(minutes));
-  const h = Math.floor(m / 60);
-  return h ? `${h} h${m % 60 ? ` ${m % 60} min` : ""}` : `${m} min`;
+/** Time to voice `chars` characters, e.g. «3 min». */
+export function voicingTime(chars: number, provider: Provider): string {
+  return duration(voicingMinutes(chars, provider));
 }
 
 /** «5 7-9» → [5, 7, 8, 9]. */

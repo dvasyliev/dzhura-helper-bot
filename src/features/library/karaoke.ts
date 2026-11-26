@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { Api } from "grammy";
 import { z } from "zod";
+import { bold, escape } from "../../format.ts";
 import type { Version } from "../karaoke/pipeline.ts";
 import { uploads } from "../karaoke/youtube.ts";
 import { withGroup } from "./group.ts";
@@ -120,7 +121,7 @@ export function karaokeItems(
         return {
           key,
           kind: "text",
-          text: `${title}\nhttps://youtu.be/${videoId}`,
+          text: `🎤 ${bold(escape(title))}\nhttps://youtu.be/${videoId}`,
         };
       }
       if (made) {
@@ -128,14 +129,14 @@ export function karaokeItems(
           key,
           kind: "video",
           ...made,
-          caption: title,
+          caption: `🎤 ${bold(escape(title))}`,
           video: song.meta,
         };
       }
       return {
         key,
         kind: "text",
-        text: `⏳ ${title} — not made yet`,
+        text: `⏳ ${bold(escape(title))} — not made yet`,
         button: makeButton(song.id, version),
       };
     }),

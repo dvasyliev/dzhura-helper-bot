@@ -138,7 +138,7 @@ The voice buttons are in [voices.json](src/features/audiobook/voices.json), grou
 
 ### 3.5. Check
 
-Put an EPUB into `data/audiobook/<Author> - <Title>/` and voice a sample:
+Put an EPUB into `data/books/<Author> - <Title>/` and voice a sample:
 
 ```bash
 npm run sample -- "<Author> - <Title>" 150

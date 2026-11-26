@@ -1,5 +1,6 @@
 import { GrammyError, HttpError, type Api } from "grammy";
 import { config } from "../../config.ts";
+import { bold, escape, HTML } from "../../format.ts";
 import { LIBRARY_FILE, loadState, serial, type LibraryState } from "./state.ts";
 import type { Synced } from "./topic.ts";
 
@@ -43,8 +44,9 @@ export function withGroup(
         .sendMessage(
           config.ownerId,
           telegram
-            ? `The library group is unavailable (${reason}); sending here.`
-            : `Couldn't update the library (${reason}); sending here.`,
+            ? `⚠️ ${bold("The library group is unavailable")}\n${escape(reason)}\nSending here.`
+            : `⚠️ ${bold("Couldn't update the library")}\n${escape(reason)}\nSending here.`,
+          HTML,
         )
         .catch((sendError) => console.error("sendMessage failed:", sendError));
       return undefined;

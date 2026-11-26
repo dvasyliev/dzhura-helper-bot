@@ -20,10 +20,11 @@ async function book(name: string, files: string[]) {
 }
 
 describe("unfinishedTranslations", () => {
-  it("lists folders without book.uk.md", async () => {
-    await book("B - Second", ["book.md"]);
-    await book("A - First", ["book.md", "book.uk.md"]);
-    await book("C - Third", ["book.md", "glossary.json"]);
+  it("lists book folders whose translation has no book.md yet", async () => {
+    await book("B - Second/translation", ["source.md"]);
+    await book("A - First/translation", ["source.md", "book.md"]);
+    await book("C - Third/translation", ["source.md", "glossary.json"]);
+    await book("D - Not translated", ["book.md"]);
     await writeFile(path.join(root, "stray.txt"), "");
     expect(await unfinishedTranslations(root)).toEqual([
       "B - Second",

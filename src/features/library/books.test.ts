@@ -9,7 +9,6 @@ import {
   chapterFiles,
   syncBook,
   topicName,
-  translations,
 } from "./books.ts";
 import { resetUnavailable } from "./group.ts";
 import { saveState } from "./state.ts";
@@ -20,7 +19,7 @@ const ENGLISH = "The man and the dog went to the sea with his friend.";
 const UKRAINIAN = "Чоловік і пес пішли до моря зі своїм другом.";
 
 let root: string;
-let dirs: { books: string; translate: string; state: string };
+let dirs: { books: string; state: string };
 
 async function put(file: string, text = ""): Promise<void> {
   await mkdir(dirname(join(root, file)), { recursive: true });
@@ -39,7 +38,8 @@ function markdown(
     `author: ${JSON.stringify(author)}`,
     "---",
     "",
-    ...chapters.flatMap((c) => [`# ${c}`, "", text, ""]),
+    // Long enough that no two chapters are joined into one track.
+    ...chapters.flatMap((c) => [`# ${c}`, "", text.repeat(100), ""]),
   ].join("\n");
 }
 
@@ -54,13 +54,12 @@ async function translatedBook(): Promise<void> {
   await put("books/Orig/audio/Kokoro/002 Two.mp3");
   const uk = markdown("Ориг", "А", ["Один", "Два"], UKRAINIAN);
   await put(
-    "translate/Orig/book.md",
+    "books/Orig/translation/source.md",
     markdown("Orig", "A", ["One", "Two"], ENGLISH),
   );
-  await put("translate/Orig/book.uk.md", uk);
-  await put("translate/Orig/book.uk.epub");
-  await put("books/А - Ориг/book.md", uk);
-  await put("books/А - Ориг/audio/Holos/001 Один.mp3");
+  await put("books/Orig/translation/book.md", uk);
+  await put("books/Orig/translation/book.epub");
+  await put("books/Orig/translation/audio/Holos/001 Один.mp3");
 }
 
 function fakeApi() {
@@ -73,6 +72,9 @@ function fakeApi() {
     sendMessage: vi.fn(sent),
     sendAudio: vi.fn(file("audio")),
     sendDocument: vi.fn(file("document")),
+    sendMediaGroup: vi.fn((_chat: number, media: unknown[]) =>
+      Promise.all(media.map(file("audio"))),
+    ),
     pinChatMessage: vi.fn(() => Promise.resolve(true)),
   };
 }
@@ -81,7 +83,6 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "books-"));
   dirs = {
     books: join(root, "books"),
-    translate: join(root, "translate"),
     state: join(root, "library.json"),
   };
   resetUnavailable();
@@ -133,38 +134,100 @@ describe("bookItems", () => {
       kind: "text",
       pin: true,
       text: [
-        "📕 Orig",
+        "📕 <b>Orig</b>",
         "A",
-        "English · 2 chapters",
+        "",
+        "<blockquote>English · 2 chapters",
         "🎧 Kokoro: 2 of 2",
         "🎧 Holos: 1 of 2",
-        "🌐 Ukrainian translation",
+        "🌐 Ukrainian translation</blockquote>",
       ].join("\n"),
     });
     expect(items[2]).toMatchObject({ kind: "document", name: "А - Ориг.epub" });
     expect(items[5]).toMatchObject({
       kind: "audio",
       title: "002 Two",
-      performer: "Orig",
     });
   });
 });
 
-describe("translations", () => {
-  it("map the Ukrainian folder to its original", async () => {
+describe("bookItems with descriptions", () => {
+  it("captions a chapter's audio with its description", async () => {
     await translatedBook();
-    expect(await translations(dirs)).toEqual(new Map([["А - Ориг", "Orig"]]));
+    await put(
+      "books/Orig/descriptions.json",
+      JSON.stringify({ "001 One": "Про <щось>." }),
+    );
+    const items = await bookItems("Orig", dirs);
+    expect(
+      items.find((i) => i.key === "voice:Kokoro/001 One.mp3"),
+    ).toMatchObject({ caption: "Про &lt;щось&gt;." });
+    expect(
+      (
+        items.find((i) => i.key === "voice:Kokoro/002 Two.mp3") as {
+          caption?: string;
+        }
+      ).caption,
+    ).toBeUndefined();
+  });
+});
+
+describe("bookItems with a cover", () => {
+  it("pins the cover with the card and the description as its caption", async () => {
+    await translatedBook();
+    await put("books/Orig/cover.jpg", "image");
+    await put(
+      "books/Orig/info.json",
+      JSON.stringify({
+        cover: "cover.jpg",
+        year: 2007,
+        pages: 96,
+        description: "Про щось.",
+      }),
+    );
+    const [first] = await bookItems("Orig", dirs);
+    expect(first).toMatchObject({
+      key: "contents",
+      kind: "photo",
+      pin: true,
+      file: join(dirs.books, "Orig", "cover.jpg"),
+    });
+    expect((first as { caption: string }).caption).toBe(
+      [
+        "📕 <b>Orig</b>",
+        "A",
+        "",
+        "<blockquote>English · 2 chapters · 2007 · ~96 pages",
+        "🎧 Kokoro: 2 of 2",
+        "🎧 Holos: 1 of 2",
+        "🌐 Ukrainian translation</blockquote>",
+        "",
+        "Про щось.",
+      ].join("\n"),
+    );
   });
 });
 
 describe("bookFolders", () => {
-  it("skips translations and adds translate folders with no audiobook folder", async () => {
+  it("lists the original folders, not their translations", async () => {
     await translatedBook();
     await put(
-      "translate/Other/book.md",
+      "books/Other/translation/source.md",
       markdown("Other", "B", ["X"], ENGLISH),
     );
-    expect((await bookFolders(dirs)).sort()).toEqual(["Orig", "Other"]);
+    expect(await bookFolders(dirs)).toEqual(["Orig", "Other"]);
+  });
+});
+
+describe("bookItems of a translation-only book", () => {
+  it("reads the book from its translation's source", async () => {
+    await put(
+      "books/Other/translation/source.md",
+      markdown("Other", "B", ["X"], ENGLISH),
+    );
+    expect((await bookItems("Other", dirs))[0]).toMatchObject({
+      key: "contents",
+    });
   });
 });
 
@@ -173,7 +236,11 @@ describe("syncBook", () => {
     await translatedBook();
     await saveState({ chatId: -100, topics: {} }, dirs.state);
     const api = fakeApi();
-    const synced = await syncBook(api as unknown as Api, "А - Ориг", dirs);
+    const synced = await syncBook(
+      api as unknown as Api,
+      "Orig/translation",
+      dirs,
+    );
     expect(api.createForumTopic).toHaveBeenCalledTimes(1);
     expect(api.createForumTopic).toHaveBeenCalledWith(-100, "A — Orig");
     expect(synced?.changed).toContain("voice:Holos/001 Один.mp3");

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { duration } from "../../eta.ts";
 import {
+  voicingMinutes,
+  voicingTime,
   bookName,
   chapterName,
-  duration,
   findBooks,
   forecast,
   bookLanguage,
@@ -87,17 +89,19 @@ describe("forecast", () => {
       "≈1 h 50 min of audio, ≈53 MB (largest chapter ≈48 MB).\nThe first chapter will be ready in ≈1 min, the whole voicing takes ≈11 min.",
     );
   });
-
-  it("formats durations", () => {
-    expect(duration(0.2)).toBe("1 min");
-    expect(duration(60)).toBe("1 h");
-    expect(duration(75)).toBe("1 h 15 min");
-  });
 });
 
 describe("parseNumbers", () => {
   it("reads numbers and ranges", () => {
     expect(parseNumbers("5 7-9, 5")).toEqual([5, 7, 8, 9]);
     expect(parseNumbers("")).toEqual([]);
+  });
+});
+
+describe("voicingMinutes", () => {
+  it("is the voicing time of the characters in minutes", () => {
+    expect(voicingTime(9613, "holos")).toBe(
+      duration(voicingMinutes(9613, "holos")),
+    );
   });
 });

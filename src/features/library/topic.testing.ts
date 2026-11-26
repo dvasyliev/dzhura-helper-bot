@@ -45,6 +45,17 @@ function fakeApi() {
     sendAudio: vi.fn(file("audio")),
     sendDocument: vi.fn(file("document")),
     sendVideo: vi.fn(file("video")),
+    sendPhoto: vi.fn((..._args: unknown[]) => {
+      const id = n++;
+      return Promise.resolve({
+        message_id: id,
+        photo: [{ file_id: `s${id}` }, { file_id: `f${id}` }],
+      });
+    }),
+    sendMediaGroup: vi.fn(
+      (_chat: number, media: unknown[], _options?: unknown) =>
+        Promise.all(media.map(() => file("audio")())),
+    ),
     editMessageText: vi.fn(() => Promise.resolve(true)),
     editMessageMedia: vi.fn(() =>
       Promise.resolve({ message_id: 1, audio: { file_id: "edited" } }),
@@ -64,7 +75,6 @@ export function audio(key: string, extra: Partial<FileItem> = {}): FileItem {
     size: 1000,
     mtime: 1,
     title: key,
-    performer: "Book",
     ...extra,
   };
 }
@@ -92,6 +102,20 @@ export function postedA(a: FileItem): LibraryState {
     chatId: CHAT,
     topics: {
       book: { threadId: 3, messages: [posted("a", 10, a)], tooBig: {} },
+    },
+  };
+}
+
+/** Topic 5 holding `item` as message 10, under its own key. */
+export function postedState(item: Item): LibraryState {
+  return {
+    chatId: CHAT,
+    topics: {
+      book: {
+        threadId: 5,
+        messages: [posted(item.key, 10, item)],
+        tooBig: {},
+      },
     },
   };
 }

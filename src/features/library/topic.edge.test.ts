@@ -16,13 +16,12 @@ describe("syncTopic edge cases", () => {
   it("lists each changed key once when the topic is recreated midway", async () => {
     const a = audio("a");
     const state = postedA(a);
-    t.api.sendAudio
-      .mockImplementationOnce(() =>
-        Promise.resolve({ message_id: 50, audio: { file_id: "fb" } }),
-      )
-      .mockRejectedValueOnce(apiError("Bad Request: message thread not found"));
-    const result = await sync(state, [a, audio("b"), audio("c")]);
-    expect(result.changed).toEqual(["b", "a", "c"]);
+    t.api.sendMessage.mockRejectedValueOnce(
+      apiError("Bad Request: message thread not found"),
+    );
+    const x: TextItem = { key: "x", kind: "text", text: "X" };
+    const result = await sync(state, [a, audio("b"), x, audio("c")]);
+    expect(result.changed).toEqual(["b", "a", "x", "c"]);
   });
 
   it("records a too-big file only after the owner was told", async () => {
@@ -84,6 +83,7 @@ describe("syncTopic edge cases", () => {
 
     expect(t.api.sendVideo.mock.calls[0]![2]).toEqual({
       message_thread_id: 5,
+      parse_mode: "HTML",
       caption: "Song",
       duration: 3,
       width: 4,

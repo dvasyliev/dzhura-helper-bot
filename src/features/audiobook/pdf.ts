@@ -11,8 +11,7 @@ import path from "node:path";
 import { runPython } from "../../python.ts";
 import type { Book } from "../book/epub.ts";
 import { BOOK_MD, parseMarkdown } from "../book/markdown.ts";
-import { BOOKS_DIR } from "./library.ts";
-import { bookDir, bookName, safeFilename } from "./text.ts";
+import { BOOKS_DIR, bookDir, bookName, safeFilename } from "./text.ts";
 
 /** A PDF is converted here first: its book folder is named after the title found inside it. */
 const INCOMING_DIR = path.join(BOOKS_DIR, ".incoming");

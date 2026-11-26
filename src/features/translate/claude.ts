@@ -68,11 +68,12 @@ export function limitReset(output: Output, now: Date): Date | undefined {
   return new Date(now.getTime() + FALLBACK_WAIT_MS);
 }
 
-/** Runs `claude -p` with a system prompt file and `input` on stdin; returns the reply text and hands its usage to `onUsage`. */
+/** Runs `claude -p` with a system prompt file and `input` on stdin; returns the reply text and hands its usage to `onUsage`; `model` defaults to sonnet. */
 export function runClaude(
   promptFile: string,
   input: string,
   onUsage?: (usage: Usage) => void,
+  { model = "sonnet" }: { model?: string } = {},
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const { ANTHROPIC_API_KEY: _key, ...env } = process.env;
@@ -81,7 +82,7 @@ export function runClaude(
       [
         "-p",
         "--model",
-        "sonnet",
+        model,
         "--tools",
         "",
         "--no-session-persistence",

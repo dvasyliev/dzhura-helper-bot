@@ -1,7 +1,7 @@
 import type { Context } from "grammy";
 import { mkdir, writeFile } from "node:fs/promises";
 import { config } from "./config.ts";
-import { message, notify } from "./features/audiobook/deliver.ts";
+import { notify } from "./features/audiobook/deliver.ts";
 import { placeSource, readPdf } from "./features/audiobook/pdf.ts";
 import {
   bookDir,
@@ -12,7 +12,8 @@ import {
 } from "./features/audiobook/text.ts";
 import { parseEpub, type Book } from "./features/book/epub.ts";
 import { youtubeId } from "./features/karaoke/link.ts";
-import { busyWith, startJob } from "./jobs.ts";
+import { bold, HTML, problem } from "./format.ts";
+import { busyHtml, busyWith, startJob } from "./jobs.ts";
 
 /** What the owner sent, recognised once; features offer their actions for it. */
 export type Input =
@@ -29,9 +30,8 @@ export function linkInput(text: string): Input | undefined {
 }
 
 const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024; // Telegram Bot API getFile limit
-const NO_CHAPTER = "Found no chapter with text in the book.";
-const SCAN =
-  "This PDF looks like a scan; I can read only PDFs with a text layer for now.";
+const NO_CHAPTER = `⚠️ ${bold("Found no chapter with text in the book")}`;
+const SCAN = `⚠️ ${bold("This PDF looks like a scan")}\nI can read only PDFs with a text layer for now.`;
 
 /** Whether a sent file is a book the bot reads, by its name. */
 export function isBookFile(name: string): "epub" | "pdf" | undefined {
@@ -55,12 +55,13 @@ export async function receiveBook(
   if (!doc || !type) return false;
   if ((doc.file_size ?? 0) > MAX_DOWNLOAD_BYTES) {
     await ctx.reply(
-      "The file is over 20 MB: Telegram doesn't let bots download it.",
+      `⚠️ ${bold("The file is over 20 MB")}\nTelegram doesn't let bots download it.`,
+      HTML,
     );
     return true;
   }
   if (type === "pdf" && busyWith()) {
-    await ctx.reply(`Please wait, ${busyWith()} is in progress.`);
+    await ctx.reply(busyHtml(), HTML);
     return true;
   }
   try {
@@ -68,7 +69,7 @@ export async function receiveBook(
     if (type === "pdf") await startPdf(ctx, data, name, show);
     else {
       const book = await parseEpub(data, name);
-      if (!book.chapters.length) await ctx.reply(NO_CHAPTER);
+      if (!book.chapters.length) await ctx.reply(NO_CHAPTER, HTML);
       else {
         const dir = bookDir(bookName(book));
         await mkdir(dir, { recursive: true });
@@ -78,7 +79,7 @@ export async function receiveBook(
       }
     }
   } catch (error) {
-    await ctx.reply(`Error: ${message(error)}`);
+    await ctx.reply(`⚠️ ${bold("Error")}\n${problem(error)}`, HTML);
   }
   return true;
 }
@@ -120,8 +121,15 @@ async function startPdf(
     await show(bookInput(book));
   };
   const stopped = (error: unknown) =>
-    notify(ctx.api, chatId, `Reading the PDF stopped: ${message(error)}`);
+    notify(
+      ctx.api,
+      chatId,
+      `⚠️ ${bold("Reading the PDF stopped")}\n${problem(error)}`,
+    );
   if (!startJob(`reading «${name}»`, read, stopped))
-    return ctx.reply(`Please wait, ${busyWith()} is in progress.`);
-  await ctx.reply("Reading the PDF, this takes a minute or two.");
+    return ctx.reply(busyHtml(), HTML);
+  await ctx.reply(
+    `⏳ ${bold("Reading the PDF")}\nThis takes a minute or two.`,
+    HTML,
+  );
 }

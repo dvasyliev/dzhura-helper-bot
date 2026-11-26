@@ -50,6 +50,11 @@ describe("reconcile", () => {
       edit: [],
       cut: 1,
     }));
+  it("cuts where a photo meets a text message of the same key", () => {
+    const text: Item = { key: "contents", kind: "text", text: "hi" };
+    const photo: Item = { ...file("contents"), kind: "photo" };
+    expect(reconcile([photo], [p(text)])).toEqual({ edit: [], cut: 0 });
+  });
   it("changes nothing when all match", () =>
     expect(reconcile([a, b], [p(a), p(b)])).toEqual({ edit: [], cut: 2 }));
 });

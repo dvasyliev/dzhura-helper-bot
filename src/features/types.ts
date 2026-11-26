@@ -5,7 +5,7 @@ import type { Input } from "../input.ts";
 export type Feature = {
   id: string;
   title: string;
-  /** What to send to use it; shown when its menu button is pressed. Omit for features not built yet. */
+  /** What to send to use it, as HTML; shown when its menu button is pressed. Omit for features not built yet. */
   hint?: string;
   /** Replaces `hint` when the reply needs more than text, e.g. buttons. */
   open?: (ctx: Context) => Promise<unknown>;
@@ -21,7 +21,7 @@ export type Feature = {
 export type Actions = {
   /** Buttons whose callbacks the feature's composer handles. */
   buttons: { text: string; data: string }[];
-  /** Status lines under the card's summary, e.g. how much is voiced. */
+  /** Status lines (HTML) under the card's summary, e.g. how much is voiced. */
   lines?: string[];
   /** The feature's next step when it is only a question; shown at once when no other feature has an action. */
   ask?: (ctx: Context) => Promise<unknown>;

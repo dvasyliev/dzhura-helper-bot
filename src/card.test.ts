@@ -40,12 +40,28 @@ describe("card", () => {
       { buttons: [{ text: "🌐 Translate", data: "t" }], lines: ["Half"] },
     ]);
     if (result.kind !== "card") throw new Error(result.kind);
-    expect(result.text).toBe("📕 T\nA\nEnglish · 2 chapters\nVoiced 1\nHalf");
+    expect(result.text).toBe(
+      "📕 <b>T</b>\nA\n\n<blockquote>English · 2 chapters\nVoiced 1\nHalf</blockquote>",
+    );
     expect(
       result.keyboard.inline_keyboard.map((row) =>
         row.map((b) => ("callback_data" in b ? b.callback_data : "")),
       ),
     ).toEqual([["v"], ["t"]]);
+  });
+
+  it("shows the cover and the info of a book on the card", () => {
+    const result = card(book, [{ buttons: [{ text: "T", data: "t" }] }], {
+      cover: "/c.jpg",
+      year: 2007,
+      pages: 96,
+      description: "Про щось.",
+    });
+    if (result.kind !== "card") throw new Error(result.kind);
+    expect(result.photo).toBe("/c.jpg");
+    expect(result.text).toBe(
+      "📕 <b>T</b>\nA\n\n<blockquote>English · 2 chapters · 2007 · ~96 pages</blockquote>\n\nПро щось.",
+    );
   });
 
   it("names a YouTube video", () => {
@@ -54,7 +70,7 @@ describe("card", () => {
       { buttons: [{ text: "b", data: "b" }] },
     ]);
     if (result.kind !== "card") throw new Error(result.kind);
-    expect(result.text).toBe("🎬 YouTube video");
+    expect(result.text).toBe("🎬 <b>YouTube video</b>");
   });
 });
 

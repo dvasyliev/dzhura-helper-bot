@@ -1,10 +1,11 @@
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Book } from "../book/epub.ts";
 import type { CheckInput, Problem } from "./check.ts";
-import { LimitError } from "./claude.ts";
-import { translateBook } from "./pipeline.ts";
+import { LimitError, type Usage } from "./claude.ts";
+import { paragraphs } from "./chunks.ts";
+import { translateBook, translateMinutes } from "./pipeline.ts";
 import {
   book,
   fakeCheck,
@@ -17,6 +18,56 @@ import {
 } from "./pipeline.testing.ts";
 
 describe("translateBook", () => {
+  it("describes the tracks of the translated book and adds the usage", async () => {
+    const { dir, opts } = await setup();
+    const { run } = fakeRun((s) =>
+      paragraphs(s)
+        .map((p) => (p.startsWith("# ") ? "# Розділ" : "слово ".repeat(100)))
+        .join("\n\n"),
+    );
+    const used = {
+      calls: 1,
+      input: 5,
+      output: 5,
+      cacheWrite: 0,
+      cacheRead: 0,
+      costUsd: 0.5,
+    };
+    const withDescriptions = vi.fn(
+      async (prompt: string, input: string, onUsage?: (u: Usage) => void) => {
+        if (!prompt.endsWith("description-prompt.md"))
+          return run(prompt, input);
+        onUsage?.(used);
+        return "Опис.";
+      },
+    );
+    const result = await translateBook(book, {
+      ...opts,
+      run: withDescriptions,
+    });
+    const saved = JSON.parse(
+      await readFile(join(dir, "descriptions.json"), "utf8"),
+    );
+    expect(Object.values(saved).length).toBeGreaterThan(0);
+    expect(Object.values(saved)).toEqual(
+      Object.values(saved).map(() => "Опис."),
+    );
+    expect(result.usage.costUsd).toBeCloseTo(0.5 * Object.keys(saved).length);
+    expect(result.usage.costUsd).toBeGreaterThan(0);
+  });
+
+  it("does not fail the translation when describing fails", async () => {
+    const { opts } = await setup();
+    const { run } = fakeRun();
+    const failing = vi.fn(async (prompt: string, input: string) => {
+      if (prompt.endsWith("description-prompt.md")) throw new Error("boom");
+      return run(prompt, input);
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = await translateBook(book, { ...opts, run: failing });
+    expect(result.book.chapters).toHaveLength(2);
+  });
+
   it("translates a two-chapter book", async () => {
     const { dir, opts, progress } = await setup();
     const { run } = fakeRun();
@@ -25,15 +76,15 @@ describe("translateBook", () => {
     expect(result.book.author).toBe("Якийсь Автор");
     expect(result.book.chapters).toHaveLength(2);
     expect(result.report).toEqual({ fixed: 0, problems: 0, unchecked: 0 });
-    expect(result.epub).toBe(join(dir, "book.uk.epub"));
+    expect(result.epub).toBe(join(dir, "book.epub"));
     expect(progress.at(-1)).toMatchObject({ done: 2, total: 2 });
     const files = await readdir(join(dir, "chunks"));
     expect(files.sort()).toEqual(
       ["0001.md", "0001.uk.md", "0002.md", "0002.uk.md"].sort(),
     );
-    for (const file of ["book.md", "glossary.json", "report.json"])
+    for (const file of ["source.md", "glossary.json", "report.json"])
       await expect(readFile(join(dir, file), "utf8")).resolves.toBeTruthy();
-    const uk = await readFile(join(dir, "book.uk.md"), "utf8");
+    const uk = await readFile(join(dir, "book.md"), "utf8");
     expect(uk).toContain("# Розділ");
   });
 
@@ -298,6 +349,18 @@ describe("translateBook", () => {
     expect(calls.filter((c) => isFix(c))).toHaveLength(1);
   });
 
+  it("hands the original's cover to pandoc", async () => {
+    const { opts } = await setup();
+    const { run } = fakeRun();
+    const pandoc = vi.fn(async () => true);
+    await translateBook(book, { ...opts, run, pandoc, cover: "/c/cover.jpg" });
+    expect(pandoc).toHaveBeenCalledWith(
+      expect.stringContaining("book.md"),
+      expect.stringContaining("book.epub"),
+      "/c/cover.jpg",
+    );
+  });
+
   it("returns the book without an EPUB when pandoc is missing", async () => {
     const { opts } = await setup();
     const { run } = fakeRun();
@@ -308,5 +371,10 @@ describe("translateBook", () => {
     });
     expect(result.epub).toBeUndefined();
     expect(result.book.chapters).toHaveLength(2);
+  });
+
+  it("estimates the time of the chunks left, eight at a time", () => {
+    expect(translateMinutes(8)).toBeCloseTo(40 / 60);
+    expect(translateMinutes(9)).toBeCloseTo(80 / 60);
   });
 });

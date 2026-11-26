@@ -1,20 +1,21 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { TRANSLATE_DIR } from "./pipeline.ts";
+import { folders } from "../audiobook/library.ts";
+import { BOOKS_DIR, translationFolder } from "../audiobook/text.ts";
+import { BOOK_MD } from "../book/markdown.ts";
 
-/** Translation folders without the assembled `book.uk.md`, by name. */
+/** Book folders whose `translation/` is started but has no finished book.md yet. */
 export async function unfinishedTranslations(
-  root = TRANSLATE_DIR,
+  root = BOOKS_DIR,
 ): Promise<string[]> {
-  const folders = (
-    await readdir(root, { withFileTypes: true }).catch(() => [])
-  ).filter((f) => f.isDirectory());
   const result = [];
-  for (const { name } of folders) {
-    const files = await readdir(path.join(root, name));
-    if (!files.includes("book.uk.md")) result.push(name);
+  for (const folder of await folders(root)) {
+    const files = await readdir(
+      path.join(root, translationFolder(folder)),
+    ).catch(() => undefined);
+    if (files && !files.includes(BOOK_MD)) result.push(folder);
   }
-  return result.sort();
+  return result;
 }
 
 /** How many chunks of the translation in `dir` are already translated. */

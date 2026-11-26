@@ -32,13 +32,13 @@ describe("karaokeItems", () => {
     expect(items[0]).toMatchObject({
       key: "Song/music",
       kind: "video",
-      caption: "Song (Karaoke)",
+      caption: "🎤 <b>Song (Karaoke)</b>",
       video: meta,
     });
     expect(items[1]).toEqual({
       key: "Song/vocals",
       kind: "text",
-      text: "⏳ Song (Vocals) — not made yet",
+      text: "⏳ <b>Song (Vocals)</b> — not made yet",
       button: { text: "🎤 Make it", data: "karaoke:make:id-Song:vocals" },
     });
   });
@@ -52,7 +52,7 @@ describe("karaokeItems", () => {
     expect(items[0]).toEqual({
       key: "Song/music",
       kind: "text",
-      text: "Song (Karaoke)\nhttps://youtu.be/abc",
+      text: "🎤 <b>Song (Karaoke)</b>\nhttps://youtu.be/abc",
     });
   });
 
@@ -135,7 +135,7 @@ describe("songs", () => {
       "S (abc)/music",
       "S (abc)/vocals",
     ]);
-    expect(items[1]).toMatchObject({ caption: "S (Vocals)" });
+    expect(items[1]).toMatchObject({ caption: "🎤 <b>S (Vocals)</b>" });
   });
 
   it("skips a song whose meta.json lacks what the video needs", async () => {
@@ -179,8 +179,8 @@ describe("syncKaraoke", () => {
 
     expect(api.createForumTopic).toHaveBeenCalledWith(-100, "🎤 Karaoke");
     expect(api.sendMessage.mock.calls.map((c) => (c as unknown[])[1])).toEqual([
-      "S (Karaoke)\nhttps://youtu.be/yt1",
-      "⏳ S (Vocals) — not made yet",
+      "🎤 <b>S (Karaoke)</b>\nhttps://youtu.be/yt1",
+      "⏳ <b>S (Vocals)</b> — not made yet",
     ]);
     expect(synced?.changed).toEqual(["S/music", "S/vocals"]);
   });

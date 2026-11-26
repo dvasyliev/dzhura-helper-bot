@@ -8,6 +8,7 @@ import {
 } from "grammy";
 import type { Message } from "grammy/types";
 import { config } from "../../config.ts";
+import { bold, code, escape, HTML } from "../../format.ts";
 import {
   reconcile,
   version,
@@ -25,6 +26,24 @@ import {
 
 /** Telegram's upload limit for bots. */
 export const MAX_UPLOAD = 50 * 1024 * 1024;
+
+/** Telegram's most files in one album. */
+export const MAX_ALBUM = 10;
+
+/** From `start`, the audios in a row that go out as one album: up to MAX_ALBUM, none when the item is not audio. */
+export function albumAt<T extends { kind: string }>(
+  items: T[],
+  start: number,
+): T[] {
+  let end = start;
+  while (
+    end < items.length &&
+    end - start < MAX_ALBUM &&
+    items[end]!.kind === "audio"
+  )
+    end++;
+  return items.slice(start, end);
+}
 
 export type Synced = {
   changed: string[];
@@ -62,10 +81,8 @@ function keyboard(item: TextItem): InlineKeyboard | undefined {
 
 function mediaOptions(item: FileItem) {
   return {
-    ...(item.caption === undefined ? {} : { caption: item.caption }),
-    ...(item.kind === "audio"
-      ? { title: item.title, performer: item.performer }
-      : {}),
+    ...(item.caption === undefined ? {} : { ...HTML, caption: item.caption }),
+    ...(item.kind === "audio" ? { title: item.title } : {}),
     ...(item.kind === "video" && item.video
       ? { ...item.video, supports_streaming: true }
       : {}),
@@ -77,8 +94,25 @@ function fileIdOf(message: Message | true): string | undefined {
   return (
     message.audio?.file_id ??
     message.document?.file_id ??
+    message.photo?.at(-1)?.file_id ??
     message.video?.file_id
   );
+}
+
+function postedFile(item: FileItem, sent: Message): Posted {
+  const fileId = fileIdOf(sent);
+  return {
+    key: item.key,
+    messageId: sent.message_id,
+    kind: item.kind,
+    version: version(item),
+    ...(fileId ? { fileId } : {}),
+  };
+}
+
+/** Whether the posted message holds this item's file, only its caption may differ. */
+function sameFile(item: FileItem, old: Posted): boolean {
+  return old.version.startsWith(`${item.size}:${item.mtime}:`);
 }
 
 function upload(item: FileItem): InputFile {
@@ -143,7 +177,8 @@ export async function syncTopic(
     // Recorded only once the owner was told, so a failed note is sent again next time.
     await api.sendMessage(
       config.ownerId,
-      `Too big for Telegram (over 50 MB), not posted: ${item.file}`,
+      `⚠️ ${bold("Too big for Telegram")}\nOver 50 MB, not posted: ${code(escape(item.file))}`,
+      HTML,
     );
     topic.tooBig[item.key] = version(item);
     await save();
@@ -157,13 +192,22 @@ export async function syncTopic(
     let fileId: string | undefined;
     if (item.kind === "text" && old.kind === "text") {
       await api.editMessageText(chatId, old.messageId, item.text, {
+        ...HTML,
         reply_markup: keyboard(item),
       });
     } else if (item.kind === "text") {
       await api.editMessageCaption(chatId, old.messageId, {
+        ...HTML,
         caption: item.text,
         reply_markup: keyboard(item),
       });
+    } else if (old.kind === item.kind && sameFile(item, old)) {
+      // Only the caption changed: the file is not uploaded again, and its file_id stays.
+      await api.editMessageCaption(chatId, old.messageId, {
+        ...HTML,
+        caption: item.caption,
+      });
+      fileId = old.fileId;
     } else {
       const media = InputMediaBuilder[item.kind](
         upload(item),
@@ -207,6 +251,7 @@ export async function syncTopic(
     const thread = { message_thread_id: topic.threadId };
     if (item.kind === "text") {
       const sent = await api.sendMessage(chatId, item.text, {
+        ...HTML,
         ...thread,
         reply_markup: keyboard(item),
       });
@@ -221,35 +266,55 @@ export async function syncTopic(
         version: version(item),
       };
     }
-    const reused = [...removed, ...lost].find(
-      (m) =>
-        m.key === item.key &&
-        m.kind === item.kind &&
-        m.version === version(item) &&
-        m.fileId,
-    )?.fileId;
-    const input = reused ?? upload(item);
+    const input = inputOf(item);
     const options = { ...thread, ...mediaOptions(item) };
     const sent =
       item.kind === "audio"
         ? await api.sendAudio(chatId, input, options)
         : item.kind === "video"
           ? await api.sendVideo(chatId, input, options)
-          : await api.sendDocument(chatId, input, options);
-    const fileId = fileIdOf(sent);
-    return {
-      key: item.key,
-      messageId: sent.message_id,
-      kind: item.kind,
-      version: version(item),
-      ...(fileId ? { fileId } : {}),
-    };
+          : item.kind === "photo"
+            ? await api.sendPhoto(chatId, input, options)
+            : await api.sendDocument(chatId, input, options);
+    if (item.pin)
+      await api.pinChatMessage(chatId, sent.message_id, {
+        disable_notification: true,
+      });
+    return postedFile(item, sent);
   };
 
+  /** Two or more audios as one album; Telegram answers with a message per file. */
+  const sendAlbum = async (album: FileItem[]): Promise<Posted[]> => {
+    const sent = await api.sendMediaGroup(
+      chatId,
+      album.map((item) =>
+        InputMediaBuilder.audio(inputOf(item), mediaOptions(item)),
+      ),
+      { message_thread_id: topic.threadId },
+    );
+    return album.map((item, i) => postedFile(item, sent[i]!));
+  };
+
+  /** A file sent before with the same content, by its file id, so it is not uploaded again. */
+  const inputOf = (item: FileItem): InputFile | string =>
+    [...removed, ...lost].find(
+      (m) =>
+        m.key === item.key &&
+        m.kind === item.kind &&
+        m.version === version(item) &&
+        m.fileId,
+    )?.fileId ?? upload(item);
+
   const sendFrom = async (start: number): Promise<void> => {
-    for (const item of wanted.slice(start)) {
-      topic.messages.push(await sendOne(item));
-      changed.push(item.key);
+    for (let i = start; i < wanted.length;) {
+      const album = albumAt(wanted, i) as FileItem[];
+      const sent =
+        album.length > 1 ? await sendAlbum(album) : [await sendOne(wanted[i]!)];
+      for (const message of sent) {
+        topic.messages.push(message);
+        changed.push(message.key);
+      }
+      i += sent.length;
       await save();
     }
   };

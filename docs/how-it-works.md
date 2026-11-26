@@ -4,11 +4,15 @@
 
 `/start` shows the feature menu. Each feature is its own folder in [src/features/](../src/features/) with its own message and button handlers; the menu list and order are in [src/features/index.ts](../src/features/index.ts). A feature with no handlers shows as "(soon)". A sent book or link goes through [src/input.ts](../src/input.ts) first: the bot reads it once, asks every feature for its actions (`actions` in the feature), and replies with one card of buttons ([src/card.ts](../src/card.ts)); when only one feature can help and its next step is a question (a Ukrainian book's voices, a YouTube video's karaoke version), that question comes at once. Heavy jobs (voicing and so on) run one at a time through [src/jobs.ts](../src/jobs.ts). The Python parts live in the feature's folder: `src/features/<feature>/scripts/` (shared environment: `pyproject.toml` at the root). The features and their status are in the [README](../README.md#features).
 
+## The book card
+
+The card has the book's cover as a photo and, as its caption, the title, author, `Language · N chapters · year · ~N pages` and a short Ukrainian description (without a cover, the same as text). The info is computed once per book and saved in the book's folder: `info.json` (year, pages, description) and `cover.jpg` or `cover.png`. The cover is the EPUB's own image if it has one, else [Open Library](https://openlibrary.org); year and pages come from Open Library (pages are estimated from the text, ≈1800 characters a page, when it doesn't know the book); the description is written by Claude from the title, author and the start of the text ([description-prompt.md](../src/features/book/description-prompt.md)). The card waits up to 30 s for this; if it takes longer, or a part fails, the card goes out without that part, and the work goes on in the background and shows on the next card. A translation shows its original's cover, year and pages with its own description, and its EPUB gets the cover. Code: [src/features/book/info.ts](../src/features/book/info.ts).
+
 ## How an audiobook is voiced
 
-The bot voices Ukrainian books with HolosTTS and English books with Kokoro. It detects the language from the text: Cyrillic with і/ї/є/ґ is Ukrainian, Latin with many frequent English words (the, and, of…) is English; any other book is refused. A book is an EPUB or a PDF with a text layer (a scan is refused); a PDF is converted once into `book.md` with docling, and its chapters come from its bookmarks or headings. The whole book is read by one voice, picked from the buttons with that language's voices. The book's folder is `data/audiobook/<author> - <title>/`; title and author come from the book's metadata, or from the file name if there is no title. If the book was voiced before, the bot says right away how many chapters are done in which voice. You can return to a book you already sent without the EPUB: write a word from the title or author ("верн", "гранта") and the bot shows up to 5 matches as buttons (or asks "this one?" if there is one match).
+The bot voices Ukrainian books with HolosTTS and English books with Kokoro. It detects the language from the text: Cyrillic with і/ї/є/ґ is Ukrainian, Latin with many frequent English words (the, and, of…) is English; any other book is refused. A book is an EPUB or a PDF with a text layer (a scan is refused); a PDF is converted once into `book.md` with docling, and its chapters come from its bookmarks or headings. The whole book is read by one voice, picked from the buttons with that language's voices. The book's folder is `data/books/<author> - <title>/`; title and author come from the book's metadata, or from the file name if there is no title. If the book was voiced before, the bot says right away how many chapters are done in which voice. You can return to a book you already sent without the EPUB: write a word from the title or author ("верн", "гранта") and the bot shows up to 5 matches as buttons (or asks "this one?" if there is one match).
 
-An EPUB's chapters come from its table of contents (one EPUB file can hold several chapters). For each chapter of a Ukrainian book:
+An EPUB's chapters come from its table of contents (one EPUB file can hold several chapters). Short chapters are joined into tracks of up to 7500 characters (≈10 min of audio; a longer chapter is a track of its own): a joined chapter's title is read as a heading line before its text, and everything in the bot (numbers, `/regen N`, file names) counts tracks, still called chapters. A track is named after its first chapter ([tracks.ts](../src/features/audiobook/tracks.ts)). For each chapter of a Ukrainian book:
 
 1. **Text preparation** ([prepare.py](../src/features/audiobook/scripts/uk/prepare.py)): abbreviations as words ("т. д.", "1864 р.", "XIX ст.", "5 км", "%", "£"), numbers as words ([uk/numbers.py](../src/features/audiobook/scripts/uk/numbers.py)), stress marks ([accentuk](https://pypi.org/project/accentuk/): a dictionary plus a neural network that picks between variants from the sentence's meaning, like за́мок/замо́к; where accentuk guessed and Wiktionary knows a single stress, Wiktionary's is used), then general rules for all books ([stress_rules.txt](../src/features/audiobook/scripts/uk/stress_rules.txt), e.g. коли́ instead of ко́ли) and the book's own stress dictionary (`stresses.txt` in its folder). The result is saved to `text/001 Title.txt`; you can edit it by hand. The texts of the next chapters are prepared in a separate process while the current one is voiced.
 2. **Voicing**: phonemes (ipa-uk) → HolosTTS sentence by sentence.
@@ -20,16 +24,18 @@ Both models go through the same assembly ([audio.py](../src/features/audiobook/s
 Time: HolosTTS ~40 s per 10,000-character chapter (≈13 min of audio), "Діти капітана Гранта" (22 h) takes ≈1 h 5 min; Kokoro ~70 s per 10,000 characters (≈12 min of audio). Before voicing, the bot sends an estimate: duration, size, when the first chapter will arrive and how long the whole book will take.
 
 ```
-data/audiobook/<author> - <title>/
+data/books/<author> - <title>/
   <file>.epub
   text/001 Розділ I. Риба-молот.txt        ← prepared text, editable
   audio/<voice>/001 Розділ I. Риба-молот.mp3
   stress-check.txt                    ← words where the stress was guessed
   stresses.txt                    ← your fixes, one word per line, Глена́рван
+  translation/                    ← its Ukrainian translation, laid out the same way (see below)
 ```
 
 - **Resuming**: a file is first written as `.part` and renamed when done, so an `.mp3` is always complete. If voicing is interrupted, send the book again and pick the same voice: the bot continues from the first unfinished chapter. A chapter that fails twice stops the book so the order isn't broken.
 - **Doubtful stresses**: once all texts are ready, the bot sends a list of words where the stress was guessed (an unknown word or a name) and of homographs (за́мок/замо́к; from the [lang-uk](https://github.com/lang-uk/ukrainian-tts-preprocessing) list and Wiktionary), with those read differently within the book first. Add the wrong ones to that book's `stresses.txt`; the next chapters pick them up at once.
+- **Chapter descriptions**: when a book is voiced, Claude (haiku, through `runClaude`) writes a 1–2 sentence Ukrainian description of each chapter longer than ~300 characters, one chapter after another in the background while the chapters are voiced ([descriptions.ts](../src/features/audiobook/descriptions.ts)). They are saved in `descriptions.json` in the voiced book's folder (`translation/` for a translation), by chapter name and shared by all voices, so a re-voice or resync does not call Claude again. The description is the caption of the chapter's audio, in the private chat and in the library topic. A chapter's audio waits up to 30 s for its description; a failure or a timeout leaves the caption out and voicing goes on. When a translation finishes, all its tracks are described at once (usage added to its `usage.json` and finish message; a failure never fails the translation). `/publish` first describes every voiced track on the shelf that has no description yet, with one status message («N of M», time left), then syncs; a caption that arrives later is set by `editMessageCaption`, without uploading the audio again, and a second `/publish` calls Claude for nothing.
 - **Re-voicing**: `/regen 5` or `/regen 5-7` re-voices chapters of the last book from `text/*.txt` (including manual edits and the book's dictionary). To prepare a chapter's text from the EPUB again, delete its `.txt`.
 
 Voices are in [voices.json](../src/features/audiobook/voices.json), grouped by language (`uk`, `en`). Each voice has `id`, `name` (the button and the audio folder, so names are unique across languages) and `provider` (`holos` or `kokoro`); every voice of the book's language is a button, in the file's order. Kokoro's language comes from the first letter of the voice id: `a` American, `b` British English.
@@ -42,15 +48,17 @@ The bot translates en and ru EPUB and PDF books into uk through Claude (`claude 
 2. **Glossary**: one Claude call gives the Ukrainian title, author and the form of each name with its gender and declension (`glossary.json`).
 3. **Translation**: the book is cut into parts by paragraphs; each part goes to Claude with the last paragraph before it and the glossary lines of the names it has (English names match as whole words, names in other languages by their stem).
 4. **Check** ([chunk_check.py](../src/features/translate/scripts/chunk_check.py)), without a model: fixes the apostrophe (ʼ), quotes («») and dialogue dashes, then flags Latin words not in the source, ru letters, a lost or extra paragraph, a missing chapter title, glossary names in another form, and calques. A part with problems gets a fix call, and a second one if Latin or ru letters are still left; the version with fewer problems is kept, and what is left goes to `report.json`. If the checker itself fails, the part is saved unchecked and checked again next time; three failures in a row stop the translation.
-5. **Book**: the parts are joined into `book.uk.md`, pandoc builds the EPUB, the bot sends it and adds the book to the audiobook library with the voice buttons.
+5. **Book**: the parts are joined into `translation/book.md`, pandoc builds the EPUB, the bot sends it and offers the voice buttons. The translation is a book of its own: search finds it as «<original> · 🌐 Ukrainian», and its voices go to `translation/audio/<voice>/`.
 
 ```
-data/translate/<author> - <title>/
-  book.md                  ← the source as Markdown
+data/books/<author> - <title>/translation/
+  source.md                ← the source as Markdown
   glossary.json            ← names and their Ukrainian forms; edit and translate again to change them
   chunks/0001.md, 0001.uk.md
   report.json              ← parts whose problems were found, fixed or left
-  book.uk.md, book.uk.epub
+  usage.json               ← Claude's calls, tokens and cost for the book
+  book.md, book.epub       ← the translation
+  text/, audio/<voice>/    ← once it is voiced
 ```
 
 - **Resuming**: a part is saved as soon as it is translated. If the translation stops (an error, the bot restarted), "🌐 Translate a book" in the menu lists the unfinished books, and the bot continues from the first part not done. At the Claude usage limit the bot says when it continues and waits.
@@ -96,7 +104,7 @@ Results go to a Telegram group instead of the private chat. The private chat sta
 
 The group is a forum (Topics on) that only the bot writes in. It mirrors `data/`: after each job the bot compares the files on disk with the messages it posted and makes the topic match.
 
-- **One topic per book**, named `Author — Title`, with a pinned contents message (language, chapters, how many are voiced in which voice, whether a translation exists), the original file, the Ukrainian EPUB if translated, then for each voice a `🎧 <voice>` header and its chapters in order. A translated book stays in its original's topic.
+- **One topic per book**, named `Author — Title`, with a pinned contents message (the book's cover with the same card as in the chat: language, chapters, year, pages, a short description, how many chapters are voiced in which voice, whether a translation exists), the original file, the Ukrainian EPUB if translated, then for each voice a `🎧 <voice>` header and its chapters in order, as albums of up to 10 titled `001 Chapter`. While a book is voiced, the first chapter is posted at once, then every 10 chapters, then the rest. A translated book stays in its original's topic.
 - **One topic `🎤 Karaoke`**, two messages per song: Karaoke and Vocals. A version not made yet is a text placeholder with a "🎤 Make it" button; when the video is ready it replaces the placeholder in the same place. A version uploaded to YouTube is its link.
 - **Changes** (a re-voiced chapter, a new translation) replace the file in its message. If a chapter is missing in the middle, the messages from there are deleted and sent again (files already in Telegram are re-sent by `file_id`, not uploaded twice).
 - **Limits**: a file over 50 MB is skipped and its path is sent to the private chat once. Telegram allows about 20 messages a minute in a group, so a long book takes a few minutes; the bot waits when Telegram says "slow down".
@@ -110,7 +118,7 @@ Tests: `npx vitest run src/features/library`.
 
 ## Sample
 
-`npm run sample -- "Жуль Верн - Діти капітана Гранта" 150` takes the EPUB from `data/audiobook/Жуль Верн - Діти капітана Гранта/` and voices the first 150 words in each voice of the book's language into `data/voice-samples/<language>/<voice>.mp3`.
+`npm run sample -- "Жуль Верн - Діти капітана Гранта" 150` takes the EPUB from `data/books/Жуль Верн - Діти капітана Гранта/` and voices the first 150 words in each voice of the book's language into `data/voice-samples/<language>/<voice>.mp3`.
 
 Python tests: `uv run pytest src/features/audiobook`.
 

@@ -2,26 +2,54 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { parseEpub, type Book } from "../book/epub.ts";
 import { BOOK_MD, parseMarkdown } from "../book/markdown.ts";
-import { bookName, bookPaths, chapterName } from "./text.ts";
+import {
+  BOOKS_DIR,
+  bookPaths,
+  chapterName,
+  translationFolder,
+} from "./text.ts";
+import { groupChapters } from "./tracks.ts";
 import { VOICES, isVoiced, type Voice, type VoiceJob } from "./voice.ts";
 
-export const BOOKS_DIR = "data/audiobook";
 /** At most this many books (found by name, or unfinished) are offered as buttons. */
 export const MAX_FOUND = 5;
 
 export type Chapter = VoiceJob["chapters"][number];
 
+/** A book with its folder under BOOKS_DIR, where all its files are. */
+export type ShelfBook = Book & { folder: string };
+
+/** Folders right under `root`, sorted; the PDF work folder `.incoming` is not a book. */
+export async function folders(root = BOOKS_DIR): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+  return entries
+    .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+    .map((e) => e.name)
+    .sort();
+}
+
+/** Every book folder: the originals and the finished translations («X/translation» with its book.md). */
+export async function shelf(root = BOOKS_DIR): Promise<string[]> {
+  const result: string[] = [];
+  for (const folder of await folders(root)) {
+    result.push(folder);
+    const translation = translationFolder(folder);
+    const files: string[] = await readdir(path.join(root, translation)).catch(
+      () => [],
+    );
+    if (files.includes(BOOK_MD)) result.push(translation);
+  }
+  return result;
+}
+
 /** Up to MAX_FOUND book folders, most recently changed first, where no voice has every chapter. */
 export async function unfinished(): Promise<
   { folder: string; done: number; total: number }[]
 > {
-  const folders = (
-    await readdir(BOOKS_DIR, { withFileTypes: true }).catch(() => [])
-  ).filter((f) => f.isDirectory());
   const changed = await Promise.all(
-    folders.map(async (f) => ({
-      folder: f.name,
-      time: await lastChange(f.name),
+    (await shelf()).map(async (folder) => ({
+      folder,
+      time: await lastChange(folder),
     })),
   );
   const result = [];
@@ -58,31 +86,40 @@ async function lastChange(folder: string): Promise<number> {
   return Math.max(...times);
 }
 
+/** The book in `folder` (book.md, else its EPUB); undefined when it has neither. */
 export async function loadBook(
   folder: string,
   root = BOOKS_DIR,
-): Promise<Book | undefined> {
+): Promise<ShelfBook | undefined> {
   const dir = path.join(root, folder);
   const files = await readdir(dir);
   // A PDF is read once into book.md; reading the PDF again would take a minute.
   if (files.includes(BOOK_MD))
-    return parseMarkdown(
-      await readFile(path.join(dir, BOOK_MD), "utf8"),
+    return {
+      ...parseMarkdown(await readFile(path.join(dir, BOOK_MD), "utf8"), folder),
       folder,
-    );
+    };
   const epub = files.find((f) => f.toLowerCase().endsWith(".epub"));
   return epub
-    ? parseEpub(await readFile(path.join(dir, epub)), epub)
+    ? {
+        ...(await parseEpub(await readFile(path.join(dir, epub)), epub)),
+        folder,
+      }
     : undefined;
 }
 
-export function voicedCount(book: Book, voice: Voice, all: Chapter[]): number {
-  const { audioDir } = bookPaths(bookName(book), voice.name);
+export function voicedCount(
+  book: ShelfBook,
+  voice: Voice,
+  all: Chapter[],
+): number {
+  const { audioDir } = bookPaths(book.folder, voice.name);
   return all.filter((c) => isVoiced(audioDir, c.name)).length;
 }
 
+/** The book's tracks: short chapters joined up to about 10 minutes of audio each (see groupChapters). */
 export function chapters(book: Book): Chapter[] {
-  return book.chapters.map((c, index) => ({
+  return groupChapters(book.chapters).map((c, index) => ({
     index,
     name: chapterName(index + 1, c.title),
     text: c.text,

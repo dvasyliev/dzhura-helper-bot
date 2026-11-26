@@ -4,7 +4,7 @@ Reads one JSON request from stdin: {"book": "<path to book.md>", "language": "en
 and prints one JSON line: {"candidates": [{"term": "Fogg", "count": 12, "context": "<a sentence around it>"}]}.
 A language whose lang/<code>/language.json names a spaCy model (English) uses its named entities; any other
 language, capitalised words in mid-sentence.
-Usage: echo '{"book": "data/translate/X/book.md", "language": "en"}' \
+Usage: echo '{"book": "data/books/X/translation/source.md", "language": "en"}' \
   | uv run python src/features/translate/scripts/glossary_candidates.py
 """
 
