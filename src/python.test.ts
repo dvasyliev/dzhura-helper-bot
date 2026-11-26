@@ -6,13 +6,16 @@ describe("runPython", () => {
     vi.unstubAllEnvs();
   });
 
-  it("rejects, without an unhandled error, when uv is missing", async () => {
-    vi.stubEnv("PATH", "/nonexistent");
-    const read = async () => {
-      for await (const _line of runPython("script.py", {})) {
-        // no output expected
-      }
-    };
-    await expect(read()).rejects.toThrow(/ENOENT/);
-  });
+  it.each([false, true])(
+    "rejects, without an unhandled error, when uv is missing (background: %s)",
+    async (background) => {
+      vi.stubEnv("PATH", "/nonexistent");
+      const read = async () => {
+        for await (const _line of runPython("script.py", {}, { background })) {
+          // no output expected
+        }
+      };
+      await expect(read()).rejects.toThrow(/ENOENT/);
+    },
+  );
 });

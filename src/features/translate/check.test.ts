@@ -24,7 +24,9 @@ describe("hasTerm", () => {
     expect(hasTerm("Он жил в Лондоне.", term("Лондон"), "stem")).toBe(true);
     expect(hasTerm("Тараса нет.", term("Тарас"), "stem")).toBe(true);
     expect(hasTerm("шекспира нет.", term("Шекспир"), "stem")).toBe(false);
-    expect(hasTerm("Шекспировский музей.", term("Шекспир"), "stem")).toBe(false);
+    expect(hasTerm("Шекспировский музей.", term("Шекспир"), "stem")).toBe(
+      false,
+    );
     expect(hasTerm("Подшекспир.", term("Шекспир"), "stem")).toBe(false);
   });
 

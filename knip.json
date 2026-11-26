@@ -16,6 +16,7 @@
   ],
   "ignoreBinaries": [
     "uv",
-    "pandoc"
+    "pandoc",
+    "taskpolicy"
   ]
 }

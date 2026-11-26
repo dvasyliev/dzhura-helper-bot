@@ -60,6 +60,7 @@ export async function* voiceChapters(
   for await (const event of runPython(
     "src/features/audiobook/scripts/voice.py",
     input,
+    { background: true },
   ))
     yield event as VoiceEvent;
 }

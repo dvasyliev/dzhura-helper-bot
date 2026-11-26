@@ -66,6 +66,7 @@ export async function* runKaraoke(
   for await (const { need_lyrics, ...rest } of runPython(
     "src/features/karaoke/scripts/karaoke.py",
     input,
+    { background: true },
   ))
     yield (
       need_lyrics

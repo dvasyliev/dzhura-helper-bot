@@ -4,15 +4,19 @@ import { createInterface } from "node:readline";
 
 /**
  * Runs a Python script through uv with `input` as JSON on stdin, yielding each JSON line it prints.
- * Throws when the script exits with an error.
+ * Throws when the script exits with an error. A `background` job (voicing, karaoke) runs at macOS's «utility»
+ * priority, so it yields the CPU and GPU to the person at the computer instead of freezing it.
  */
 export async function* runPython(
   script: string,
   input: unknown,
+  { background = false }: { background?: boolean } = {},
 ): AsyncGenerator<Record<string, unknown>> {
-  const child = spawn("uv", ["run", "--quiet", "python", script], {
-    stdio: ["pipe", "pipe", "inherit"],
-  });
+  const uv = ["uv", "run", "--quiet", "python", script];
+  const [command, ...args] = background
+    ? ["taskpolicy", "-c", "utility", ...uv]
+    : uv;
+  const child = spawn(command!, args, { stdio: ["pipe", "pipe", "inherit"] });
   const exited = new Promise<number | null>((resolve, reject) => {
     child.on("error", reject);
     child.on("close", resolve);

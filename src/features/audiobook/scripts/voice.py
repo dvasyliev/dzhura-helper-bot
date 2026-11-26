@@ -24,6 +24,7 @@ warnings.filterwarnings("ignore")
 from tts import holos, kokoro  # noqa: E402
 from uk.prepare import apply_dictionary, load_stress, prepare_file, write_report  # noqa: E402
 
+PREPARE_THREADS = "2"
 PROVIDERS = {"holos": holos.make, "kokoro": kokoro.make}
 
 
@@ -67,6 +68,8 @@ def main() -> None:
     voice_chapter = PROVIDERS[job["provider"]]()
     ukrainian = job["language"] == "uk"
 
+    # The stress model in the text process would take every core; two keep it ahead of the voice and the Mac usable.
+    os.environ["OMP_NUM_THREADS"] = PREPARE_THREADS
     with ProcessPoolExecutor(1) as pool:
         texts = [
             pool.submit(PREPARE[job["language"]], c["text"], f"{job['text_dir']}/{c['name']}.txt", job["dictionary"])
