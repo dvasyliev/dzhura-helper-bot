@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 (2026-11-26)
+
+### Features
+
+- mirror books and karaoke into a Telegram forum group (1f249de)
+
 ## 0.4.0 (2026-11-26)
 
 ### Features
