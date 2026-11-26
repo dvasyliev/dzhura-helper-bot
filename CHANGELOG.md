@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 (2026-11-26)
+
+### Other
+
+- readme banner, icons and badges (bd23eb2)
+
 ## 0.6.0 (2026-11-26)
 
 ### Features
