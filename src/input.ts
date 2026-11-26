@@ -83,11 +83,15 @@ export async function receiveBook(
   return true;
 }
 
-function bookInput(book: Book): Input {
+/** A book as an input; `folder` is its book folder, by default the one a sent book is saved to. */
+export function bookInput(
+  book: Book,
+  folder = safeFilename(bookName(book)),
+): Input {
   return {
     kind: "book",
     book,
-    folder: safeFilename(bookName(book)),
+    folder,
     language: bookLanguage(book.chapters.map((c) => c.text).join("\n")),
   };
 }

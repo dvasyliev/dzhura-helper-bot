@@ -28,6 +28,7 @@ function fakeApi() {
     sendAudio: vi.fn(async () => ({})),
     sendMessage: vi.fn(async () => ({})),
     sendDocument: vi.fn(async () => ({})),
+    editMessageText: vi.fn(async () => ({})),
   };
 }
 
@@ -144,5 +145,44 @@ describe("voiceBook", () => {
     expect(sentBeforeSecond).toEqual([1]);
     expect(api.sendAudio).toHaveBeenCalledTimes(2);
     expect(syncBook).not.toHaveBeenCalled();
+  });
+
+  it("keeps one status message with the chapters voiced so far", async () => {
+    events(chapterEvents);
+    vi.mocked(syncBook).mockResolvedValue(synced([]));
+    const api = fakeApi();
+    api.sendMessage.mockResolvedValueOnce({ message_id: 9 });
+    await voiceBook(api as unknown as Api, 5, book, voice, todo, "new", {
+      done: 3,
+      total: 25,
+    });
+    expect(api.sendMessage).toHaveBeenCalledWith(
+      5,
+      "Voicing «Book»: 3 of 25 chapters.",
+    );
+    expect(api.editMessageText.mock.calls).toEqual([
+      [5, 9, "Voicing «Book»: 4 of 25 chapters."],
+      [5, 9, "Voicing «Book»: 5 of 25 chapters."],
+    ]);
+  });
+
+  it("counts re-voiced chapters in regen", async () => {
+    events(chapterEvents);
+    vi.mocked(hasGroup).mockResolvedValue(false);
+    const api = fakeApi();
+    api.sendMessage.mockResolvedValueOnce({ message_id: 9 });
+    await voiceBook(api as unknown as Api, 5, book, voice, todo, "regen", {
+      done: 0,
+      total: 2,
+    });
+    expect(api.sendMessage).toHaveBeenCalledWith(
+      5,
+      "Re-voicing «Book»: 0 of 2 chapters.",
+    );
+    expect(api.editMessageText).toHaveBeenLastCalledWith(
+      5,
+      9,
+      "Re-voicing «Book»: 2 of 2 chapters.",
+    );
   });
 });

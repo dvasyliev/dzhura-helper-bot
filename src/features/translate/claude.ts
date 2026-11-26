@@ -12,8 +12,40 @@ export class LimitError extends Error {
 const OUTPUT = z.object({
   is_error: z.boolean().optional(),
   result: z.string().optional(),
+  total_cost_usd: z.number().optional(),
+  usage: z
+    .object({
+      input_tokens: z.number().optional(),
+      output_tokens: z.number().optional(),
+      cache_creation_input_tokens: z.number().optional(),
+      cache_read_input_tokens: z.number().optional(),
+    })
+    .optional(),
 });
 type Output = z.infer<typeof OUTPUT>;
+
+/** Tokens and cost of Claude calls; `costUsd` is at API prices, which a subscription does not charge. */
+export type Usage = {
+  calls: number;
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+  costUsd: number;
+};
+
+/** The usage of one reply. */
+export function usageOf(output: Output): Usage {
+  const u = output.usage;
+  return {
+    calls: 1,
+    input: u?.input_tokens ?? 0,
+    output: u?.output_tokens ?? 0,
+    cacheWrite: u?.cache_creation_input_tokens ?? 0,
+    cacheRead: u?.cache_read_input_tokens ?? 0,
+    costUsd: output.total_cost_usd ?? 0,
+  };
+}
 
 const LIMIT = /usage limit|hit your limit|limit reached/i;
 const FALLBACK_WAIT_MS = 30 * 60 * 1000;
@@ -36,8 +68,12 @@ export function limitReset(output: Output, now: Date): Date | undefined {
   return new Date(now.getTime() + FALLBACK_WAIT_MS);
 }
 
-/** Runs `claude -p` with a system prompt file and `input` on stdin; returns the reply text. */
-export function runClaude(promptFile: string, input: string): Promise<string> {
+/** Runs `claude -p` with a system prompt file and `input` on stdin; returns the reply text and hands its usage to `onUsage`. */
+export function runClaude(
+  promptFile: string,
+  input: string,
+  onUsage?: (usage: Usage) => void,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const { ANTHROPIC_API_KEY: _key, ...env } = process.env;
     const child = spawn(
@@ -79,6 +115,7 @@ export function runClaude(promptFile: string, input: string): Promise<string> {
         );
         return;
       }
+      onUsage?.(usageOf(output));
       const reset = limitReset(output, new Date());
       if (reset) reject(new LimitError(reset));
       else if (output.is_error)

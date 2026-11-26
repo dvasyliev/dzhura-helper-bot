@@ -7,6 +7,7 @@ import { label, menuCommands } from "./commands.ts";
 import { library, privateOnly } from "./features/library/index.ts";
 import type { Feature } from "./features/types.ts";
 import { receiveBook, type Input } from "./input.ts";
+import { bookSearch } from "./search.ts";
 
 export function createBot(): Bot {
   const bot = new Bot(config.botToken);
@@ -50,6 +51,7 @@ export function createBot(): Bot {
 
   for (const feature of FEATURES)
     if (feature.composer) bot.use(feature.composer);
+  bot.use(bookSearch(show));
 
   // Nothing above took the message.
   bot.on("message", (ctx) =>

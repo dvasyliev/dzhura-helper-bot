@@ -1,13 +1,13 @@
 import { Composer, InlineKeyboard, type Context } from "grammy";
 import { readdir } from "node:fs/promises";
 import { busyWith, startJob } from "../../jobs.ts";
+import { pressedBook } from "../../search.ts";
 import { findFolder, folderKey } from "../translate/button.ts";
 import type { Feature } from "../types.ts";
 import { notify, message, voiceBook } from "./deliver.ts";
 import type { Book } from "../book/epub.ts";
 import {
   BOOKS_DIR,
-  MAX_FOUND,
   chapters,
   loadBook,
   unfinished,
@@ -17,7 +17,6 @@ import {
 import {
   bookName,
   bookPaths,
-  findBooks,
   bookLanguage,
   forecast,
   parseNumbers,
@@ -44,7 +43,7 @@ let pending: Book | undefined;
 let choosing: { book: Book; voice: Voice } | undefined;
 /** The book being voiced or voiced last, for /regen. */
 let current: { book: Book; voice: Voice } | undefined;
-/** Book folders offered by the last search or menu; buttons refer to them by index. */
+/** Book folders offered by the menu; buttons refer to them by index. */
 let found: string[] = [];
 
 const composer = new Composer<Context>();
@@ -116,8 +115,16 @@ composer.command("regen", async (ctx) => {
   const { audioDir } = bookPaths(bookName(book), voice.name);
   const chatId = ctx.chat.id;
   const regen = async () => {
+    await notify(
+      ctx.api,
+      chatId,
+      `Re-voicing ${todo.map((c) => `«${c.name}»`).join(", ")} with «${voice.name}».`,
+    );
     for (const c of todo) await removeAudio(audioDir, c.name);
-    await voiceBook(ctx.api, chatId, book, voice, todo, "regen");
+    await voiceBook(ctx.api, chatId, book, voice, todo, "regen", {
+      done: 0,
+      total: todo.length,
+    });
     await notify(ctx.api, chatId, "Re-voiced.");
   };
   if (
@@ -126,64 +133,17 @@ composer.command("regen", async (ctx) => {
     )
   )
     return ctx.reply(`Please wait, ${busyWith()} is in progress.`);
-  await ctx.reply(
-    `Re-voicing ${todo.map((c) => `«${c.name}»`).join(", ")} with «${voice.name}».`,
-  );
 });
 
-// A book sent before, found by a word of its author or title. Links and multi-line texts (song lyrics) are not titles.
-composer.on("message:text", async (ctx, next) => {
-  const text = ctx.message.text;
-  if (
-    text.startsWith("/") ||
-    text.includes("\n") ||
-    /https?:\/\/|youtu\.?be/.test(text)
-  )
-    return next();
-  const folders = await readdir(BOOKS_DIR, { withFileTypes: true }).catch(
-    () => [],
-  );
-  found = findBooks(
-    ctx.message.text,
-    folders.filter((f) => f.isDirectory()).map((f) => f.name),
-  ).slice(0, MAX_FOUND);
-  if (!found.length)
-    return ctx.reply("No such book yet. Send the EPUB or PDF to voice it.");
-  const keyboard = new InlineKeyboard();
-  if (found.length === 1) {
-    keyboard.text("Yes", "book:0").text("No", "book:no");
-    return ctx.reply(`«${found[0]}»: this one?`, { reply_markup: keyboard });
-  }
-  const list = InlineKeyboard.from(
-    found.map((name, i) => [InlineKeyboard.text(name, `book:${i}`)]),
-  );
-  await ctx.reply(`Which one? If it isn't here, refine the title.`, {
-    reply_markup: list,
-  });
-});
-
-composer.callbackQuery(/^book:(.+)$/, async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await ctx.editMessageReplyMarkup().catch(() => {});
-  const folder = found[Number(ctx.match[1])];
-  if (!folder)
-    return ctx.reply(
-      "OK. Write the title or author differently, or send the EPUB or PDF.",
-    );
-  try {
-    const book = await loadBook(folder);
-    if (!book)
-      return ctx.reply(
-        `The folder «${folder}» has no EPUB or book.md. Send the book again.`,
-      );
+// A book from the «Not finished» list of the menu.
+composer.callbackQuery(/^book:(.+)$/, (ctx) =>
+  pressedBook(ctx, found[Number(ctx.match[1])], (book) => {
     const language = languageOf(book);
     if (language !== "uk" && language !== "en")
       return ctx.reply(ONLY_LANGUAGES);
-    await offer(ctx, book, language);
-  } catch (error) {
-    await ctx.reply(`Error: ${message(error)}`);
-  }
-});
+    return offer(ctx, book, language);
+  }),
+);
 
 export const audiobook: Feature = {
   id: "audiobook",
@@ -232,8 +192,21 @@ composer.callbackQuery(/^voice-book:([0-9a-f]+)$/, async (ctx) => {
 async function start(ctx: Context, book: Book, voice: Voice, todo: Chapter[]) {
   const chatId = ctx.chat!.id;
   const total = chapters(book).length;
+  const range =
+    todo.length > 1
+      ? `from «${todo[0].name}» to «${todo.at(-1)!.name}»`
+      : `«${todo[0].name}»`;
   const voiceTodo = async () => {
-    await voiceBook(ctx.api, chatId, book, voice, todo, "new");
+    // From the job, so it comes before the status message voiceBook sends.
+    await notify(
+      ctx.api,
+      chatId,
+      `Voicing with «${voice.name}» ${range}.\n${estimate(todo, voice)}`,
+    );
+    await voiceBook(ctx.api, chatId, book, voice, todo, "new", {
+      done: total - remaining(book, voice).length,
+      total,
+    });
     const left = remaining(book, voice).length;
     if (!left)
       return notify(
@@ -267,13 +240,6 @@ async function start(ctx: Context, book: Book, voice: Voice, todo: Chapter[]) {
     await ctx.answerCallbackQuery();
     await ctx.editMessageReplyMarkup().catch(() => {});
   }
-  const range =
-    todo.length > 1
-      ? `from «${todo[0].name}» to «${todo.at(-1)!.name}»`
-      : `«${todo[0].name}»`;
-  await ctx.reply(
-    `Voicing with «${voice.name}» ${range}.\n${estimate(todo, voice)}`,
-  );
 }
 
 /** «5 chapters · ≈3 min» and «The rest (66) · ≈1 h», for the chapters `voice` has not voiced yet. */

@@ -2,7 +2,13 @@ import type { Api } from "grammy";
 import { describe, expect, it, vi } from "vitest";
 import { syncBook } from "../library/books.ts";
 import { folderKey } from "./button.ts";
-import { reportText, sendEpub, translate } from "./index.ts";
+import {
+  progressText,
+  reportText,
+  sendEpub,
+  translate,
+  usageText,
+} from "./index.ts";
 
 vi.mock("../library/books.ts", () => ({ syncBook: vi.fn() }));
 
@@ -86,5 +92,46 @@ describe("sendEpub", () => {
     const api = fakeApi();
     await sendEpub(api as unknown as Api, 5, "Book", "/t/book.uk.epub", "A");
     expect(api.sendDocument).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("usageText", () => {
+  it("sums the tokens Claude read and wrote, with the cost at API prices", () => {
+    expect(
+      usageText({
+        calls: 120,
+        input: 1000,
+        output: 350_000,
+        cacheWrite: 200_000,
+        cacheRead: 1_000_000,
+        costUsd: 4.1,
+      }),
+    ).toBe(
+      "Claude: 120 calls, 1.2M tokens in, 350K out, ≈$4.10 at API prices.",
+    );
+  });
+});
+
+describe("progressText", () => {
+  it("shows the parts done and, once Claude was called, the usage so far", () => {
+    expect(progressText("Book", { done: 0, total: 80 })).toBe(
+      "Translating «Book»: 0 of 80 parts.",
+    );
+    expect(
+      progressText("Book", {
+        done: 3,
+        total: 80,
+        usage: {
+          calls: 4,
+          input: 0,
+          output: 9000,
+          cacheWrite: 0,
+          cacheRead: 30_000,
+          costUsd: 0.2,
+        },
+      }),
+    ).toBe(
+      "Translating «Book»: 3 of 80 parts.\nClaude: 4 calls, 30K tokens in, 9K out, ≈$0.20 at API prices.",
+    );
   });
 });

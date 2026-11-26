@@ -11,7 +11,8 @@ import { voiceChapters, type Voice } from "./voice.ts";
 /**
  * Voices `todo` in reading order. With a library group the book's topic is synced and the owner gets `Done → <link>`
  * (`"new"`: after every chapter, the link once; `"regen"`: once at the end, even after a failure); without one each
- * chapter's files are sent here as it finishes. A failed chapter stops the book.
+ * chapter's files are sent here as it finishes. A failed chapter stops the book. With `progress` (chapters done before
+ * and in all) one status message counts the chapters as they finish.
  */
 export async function voiceBook(
   api: Api,
@@ -20,6 +21,7 @@ export async function voiceBook(
   voice: Voice,
   todo: Chapter[],
   mode: "new" | "regen",
+  progress?: { done: number; total: number },
 ) {
   const name = bookName(book);
   const paths = bookPaths(name, voice.name);
@@ -33,6 +35,8 @@ export async function voiceBook(
   };
   const voiced: string[] = [];
   let linked = false;
+  const status =
+    progress && (await statusMessage(api, chatId, book, mode, progress));
   const syncAtEnd = mode === "regen" && (await hasGroup());
   // Also after a failed chapter: the chapters re-voiced before it still reach the group.
   const syncVoiced = async () => {
@@ -56,6 +60,7 @@ export async function voiceBook(
       const chapter = todo.find((c) => c.index === event.chapter)!;
       if (event.error)
         throw new Error(`chapter «${chapter.name}»: ${event.error}`);
+      await status?.next();
       const files = event.files ?? [];
       if (syncAtEnd) {
         voiced.push(...files);
@@ -74,6 +79,31 @@ export async function voiceBook(
     throw error;
   }
   if (syncAtEnd) await syncVoiced();
+}
+
+/** The «Voicing «Book»: 3 of 25 chapters.» message; `next` counts one more chapter. Undefined when it can't be sent. */
+async function statusMessage(
+  api: Api,
+  chatId: number,
+  book: Book,
+  mode: "new" | "regen",
+  { done, total }: { done: number; total: number },
+) {
+  const verb = mode === "new" ? "Voicing" : "Re-voicing";
+  const text = () => `${verb} «${book.title}»: ${done} of ${total} chapters.`;
+  const sent = await api.sendMessage(chatId, text()).catch((error) => {
+    console.error("sendMessage failed:", error);
+    return undefined;
+  });
+  if (!sent) return undefined;
+  return {
+    next: async () => {
+      done++;
+      await api
+        .editMessageText(chatId, sent.message_id, text())
+        .catch((error) => console.error("editMessageText failed:", error));
+    },
+  };
 }
 
 /** `Done → <link>` to the first changed audio message; false when no audio message changed. */

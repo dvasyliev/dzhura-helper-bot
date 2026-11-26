@@ -16,6 +16,7 @@ import { BOOK_MD, parseMarkdown } from "../book/markdown.ts";
 import { syncBook } from "../library/books.ts";
 import type { Feature } from "../types.ts";
 import { findFolder, folderKey, translateButton } from "./button.ts";
+import type { Usage } from "./claude.ts";
 import { splitChunks } from "./chunks.ts";
 import { doneCount, unfinishedTranslations } from "./library.ts";
 import { TRANSLATE_DIR, translateBook, type Progress } from "./pipeline.ts";
@@ -96,8 +97,12 @@ async function begin(
     .finally(() => (running = undefined));
 }
 
-function progressText(title: string, { done, total }: Progress): string {
-  return `Translating «${title}»: ${done} of ${total} parts.`;
+export function progressText(
+  title: string,
+  { done, total, usage }: Progress,
+): string {
+  const text = `Translating «${title}»: ${done} of ${total} parts.`;
+  return usage ? `${text}\n${usageText(usage)}` : text;
 }
 
 /** «14:05» in the Mac's time zone. */
@@ -111,7 +116,7 @@ async function run(ctx: Context, chatId: number, folder: string, source: Book) {
   const total = splitChunks(source).length;
   let shown = progressText(source.title, { done: await doneCount(dir), total });
   const status = await ctx.api.sendMessage(chatId, shown);
-  const { book, epub, report } = await translateBook(source, {
+  const { book, epub, report, usage } = await translateBook(source, {
     dir,
     onProgress: async (progress) => {
       const text = progressText(source.title, progress);
@@ -136,7 +141,8 @@ async function run(ctx: Context, chatId: number, folder: string, source: Book) {
       "The EPUB needs pandoc (brew install pandoc); the book is added to the library anyway.",
     );
   else await sendEpub(ctx.api, chatId, folder, epub, safeFilename(name));
-  await notify(ctx.api, chatId, reportText(report));
+  console.log(`Translated «${source.title}». ${usageText(usage)}`);
+  await notify(ctx.api, chatId, `${reportText(report)}\n${usageText(usage)}`);
   const library = bookDir(name);
   await mkdir(library, { recursive: true });
   await copyFile(path.join(dir, "book.uk.md"), path.join(library, BOOK_MD));
@@ -167,6 +173,17 @@ export async function sendEpub(
         `Couldn't send the EPUB (it is ${epub}): ${message(error)}`,
       ),
     );
+}
+
+const compact = new Intl.NumberFormat("en", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+/** Claude's usage for the book: calls, tokens it read (cache included) and wrote, and the cost at API prices. */
+export function usageText(usage: Usage): string {
+  const read = usage.input + usage.cacheWrite + usage.cacheRead;
+  return `Claude: ${usage.calls} calls, ${compact.format(read)} tokens in, ${compact.format(usage.output)} out, ≈$${usage.costUsd.toFixed(2)} at API prices.`;
 }
 
 /** The finish message: fixed parts, parts with problems left, and parts the checker failed on. */

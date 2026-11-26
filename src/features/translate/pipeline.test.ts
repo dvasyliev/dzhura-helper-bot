@@ -1,94 +1,20 @@
-import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { readFile, readdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 import type { Book } from "../book/epub.ts";
 import type { CheckInput, Problem } from "./check.ts";
-import { paragraphs } from "./chunks.ts";
 import { LimitError } from "./claude.ts";
 import { translateBook } from "./pipeline.ts";
-
-const book: Book = {
-  title: "Two Chapters",
-  author: "Some Author",
-  chapters: [
-    { title: "One", text: "First paragraph.\nSecond paragraph." },
-    { title: "Two", text: "Third paragraph.\nFourth paragraph." },
-  ],
-};
-
-const GLOSSARY = '{"title":"Два розділи","author":"Якийсь Автор","terms":[]}';
-
-/** The text between `<tag>` and `</tag>` in a prompt input. */
-function tagged(input: string, tag: string): string {
-  return input.split(`<${tag}>\n`)[1]?.split(`\n</${tag}>`)[0] ?? "";
-}
-
-/** A fake translation that keeps the paragraph count; `drop` loses the last paragraph. */
-function translate(text: string, drop = false): string {
-  const result = paragraphs(text).map((p, i) =>
-    p.startsWith("# ") ? "# Розділ" : `Абзац ${i}`,
-  );
-  if (drop) result.pop();
-  return result.join("\n\n");
-}
-
-/** A fake checker: paragraph count, title line and the word "Zzz"; it fixes ' to ʼ. */
-async function fakeCheck({ source, translation, first }: CheckInput) {
-  const problems: Problem[] = [];
-  if (paragraphs(source).length !== paragraphs(translation).length)
-    problems.push({ kind: "paragraphs", detail: "" });
-  if (first && !translation.startsWith("# "))
-    problems.push({ kind: "title", detail: "" });
-  if (translation.includes("Zzz"))
-    problems.push({ kind: "latin", detail: "Zzz" });
-  return { translation: translation.replaceAll("'", "ʼ"), problems };
-}
-
-type Call = { prompt: string; input: string };
-
-/** A fake `run`: `translateReply` answers translate calls by the chunk's source text. */
-function fakeRun(
-  translateReply: (source: string, n: number) => string = (s) => translate(s),
-  fixReply: (source: string) => string = (s) => translate(s),
-) {
-  const calls: Call[] = [];
-  let translations = 0;
-  const run = vi.fn(async (promptFile: string, input: string) => {
-    const prompt = basename(promptFile);
-    calls.push({ prompt, input });
-    if (prompt === "glossary-prompt.md") return GLOSSARY;
-    if (prompt === "fix-prompt.md") return fixReply(tagged(input, "source"));
-    translations += 1;
-    return translateReply(tagged(input, "text"), translations);
-  });
-  return { run, calls };
-}
-
-async function setup() {
-  const dir = await mkdtemp(join(tmpdir(), "translate-"));
-  const progress: { done: number; total: number }[] = [];
-  const limits: Date[] = [];
-  const sleeps: number[] = [];
-  const opts = {
-    dir,
-    onProgress: async (p: { done: number; total: number }) => {
-      progress.push(p);
-    },
-    onLimit: async (resetAt: Date) => {
-      limits.push(resetAt);
-    },
-    sleep: async (ms: number) => {
-      sleeps.push(ms);
-    },
-    pandoc: async () => true,
-    check: fakeCheck,
-    candidates: async () => [],
-  };
-  return { dir, opts, progress, limits, sleeps };
-}
-
-const isFirstChunk = (source: string) => source.startsWith("# One");
+import {
+  book,
+  fakeCheck,
+  fakeRun,
+  isFirstChunk,
+  isFix,
+  setup,
+  tagged,
+  translate,
+} from "./pipeline.testing.ts";
 
 describe("translateBook", () => {
   it("translates a two-chapter book", async () => {
@@ -100,7 +26,7 @@ describe("translateBook", () => {
     expect(result.book.chapters).toHaveLength(2);
     expect(result.report).toEqual({ fixed: 0, problems: 0, unchecked: 0 });
     expect(result.epub).toBe(join(dir, "book.uk.epub"));
-    expect(progress.at(-1)).toEqual({ done: 2, total: 2 });
+    expect(progress.at(-1)).toMatchObject({ done: 2, total: 2 });
     const files = await readdir(join(dir, "chunks"));
     expect(files.sort()).toEqual(
       ["0001.md", "0001.uk.md", "0002.md", "0002.uk.md"].sort(),
@@ -111,12 +37,14 @@ describe("translateBook", () => {
     expect(uk).toContain("# Розділ");
   });
 
-  it("sends the previous chunk's last paragraph as context", async () => {
+  it("sends the previous chunk's last source paragraph as context", async () => {
     const { opts } = await setup();
     const { run, calls } = fakeRun();
     await translateBook(book, { ...opts, run });
-    const second = calls.filter((c) => c.prompt === "prompt.md")[1];
-    expect(tagged(second?.input ?? "", "context")).toBe("Абзац 2");
+    const second = calls.find((c) =>
+      tagged(c.input, "text").startsWith("# Two"),
+    );
+    expect(tagged(second?.input ?? "", "context")).toBe("Second paragraph.");
   });
 
   it("keeps the fix when it has fewer problems", async () => {
@@ -124,7 +52,7 @@ describe("translateBook", () => {
     const { run, calls } = fakeRun((s) => translate(s, isFirstChunk(s)));
     const result = await translateBook(book, { ...opts, run });
     expect(result.report).toEqual({ fixed: 1, problems: 0, unchecked: 0 });
-    const fix = calls.find((c) => c.prompt === "fix-prompt.md");
+    const fix = calls.find((c) => isFix(c));
     expect(tagged(fix?.input ?? "", "problems")).toContain("paragraphs");
   });
 
@@ -139,7 +67,12 @@ describe("translateBook", () => {
       },
     );
     const result = await translateBook(book, { ...opts, run });
-    expect(calls.filter((c) => c.prompt === "fix-prompt.md")).toHaveLength(2);
+    // Latin letters sit in one paragraph: only it goes to the fix, not the whole chunk.
+    expect(calls.filter((c) => isFix(c)).map((c) => c.prompt)).toEqual([
+      "fix-paragraphs-prompt.md",
+      "fix-paragraphs-prompt.md",
+    ]);
+    expect(calls.find((c) => isFix(c))?.input).not.toContain("# One");
     expect(result.report).toEqual({ fixed: 1, problems: 0, unchecked: 0 });
     expect(result.book.chapters[0]?.text).not.toContain("Zzz");
   });
@@ -151,7 +84,7 @@ describe("translateBook", () => {
       (s) => translate(s, true),
     );
     const result = await translateBook(book, { ...opts, run });
-    expect(calls.filter((c) => c.prompt === "fix-prompt.md")).toHaveLength(1);
+    expect(calls.filter((c) => isFix(c))).toHaveLength(1);
     expect(result.report).toEqual({ fixed: 0, problems: 1, unchecked: 0 });
   });
 
@@ -195,7 +128,7 @@ describe("translateBook", () => {
     const result = await translateBook(book, { ...opts, run, check });
     expect(result.book.chapters).toHaveLength(2);
     expect(result.report).toEqual({ fixed: 0, problems: 0, unchecked: 1 });
-    expect(calls.map((c) => c.prompt)).not.toContain("fix-prompt.md");
+    expect(calls.filter((c) => isFix(c))).toEqual([]);
     const saved = await readFile(join(dir, "chunks", "0001.uk.md"), "utf8");
     expect(saved).toMatch(/^# Розділ/);
     const report = JSON.parse(
@@ -240,10 +173,10 @@ describe("translateBook", () => {
   it("stops when the checker fails on three chunks in a row", async () => {
     const { dir, opts } = await setup();
     const long: Book = {
-      title: "Four",
-      chapters: ["One", "Two", "Three", "Four"].map((title) => ({
-        title,
-        text: `${title} text.`,
+      title: "Many",
+      chapters: Array.from({ length: 20 }, (_, i) => ({
+        title: `Chapter ${i + 1}`,
+        text: "Some text.",
       })),
     };
     const check = async () => {
@@ -252,12 +185,9 @@ describe("translateBook", () => {
     await expect(
       translateBook(long, { ...opts, run: fakeRun().run, check }),
     ).rejects.toThrow(/3 parts in a row.*no module named pymorphy3/);
+    // The chunks already running finish and are kept; no new one starts.
     const saved = await readdir(join(dir, "chunks"));
-    expect(saved.filter((f) => f.endsWith(".uk.md"))).toEqual([
-      "0001.uk.md",
-      "0002.uk.md",
-      "0003.uk.md",
-    ]);
+    expect(saved.filter((f) => f.endsWith(".uk.md")).length).toBeLessThan(20);
   });
 
   it("sends a glossary term only for a chunk with its whole English word", async () => {
@@ -278,7 +208,12 @@ describe("translateBook", () => {
     };
     const { run, calls } = fakeRun();
     await translateBook(english, { ...opts, run });
-    const inputs = calls.filter((c) => c.prompt === "prompt.md");
+    // Chunks run at once, so the calls come in any order.
+    const inputs = calls
+      .filter((c) => c.prompt === "prompt.md")
+      .sort((a, b) =>
+        tagged(a.input, "text").localeCompare(tagged(b.input, "text")),
+      );
     expect(inputs.map((c) => c.input.includes("Brazil: Бразилія"))).toEqual([
       true,
       false,
@@ -297,8 +232,8 @@ describe("translateBook", () => {
 
   it("stops after a second failure and resumes where it stopped", async () => {
     const { opts } = await setup();
-    const failing = fakeRun((s, n) => {
-      if (n >= 2) throw new Error("boom");
+    const failing = fakeRun((s) => {
+      if (s.startsWith("# Two")) throw new Error("boom");
       return translate(s);
     });
     await expect(
@@ -344,7 +279,7 @@ describe("translateBook", () => {
     );
     const result = await translateBook(book, { ...opts, run });
     expect(result.report).toEqual({ fixed: 1, problems: 0, unchecked: 0 });
-    const fix = calls.find((c) => c.prompt === "fix-prompt.md");
+    const fix = calls.find((c) => isFix(c));
     expect(tagged(fix?.input ?? "", "problems")).toContain("title");
   });
 
@@ -360,7 +295,7 @@ describe("translateBook", () => {
       expect(await readFile(join(dir, "chunks", name), "utf8")).toContain(
         "Пʼять",
       );
-    expect(calls.filter((c) => c.prompt === "fix-prompt.md")).toHaveLength(1);
+    expect(calls.filter((c) => isFix(c))).toHaveLength(1);
   });
 
   it("returns the book without an EPUB when pandoc is missing", async () => {

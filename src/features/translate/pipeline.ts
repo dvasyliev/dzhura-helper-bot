@@ -15,7 +15,14 @@ import {
   type Term,
 } from "./check.ts";
 import { assemble, paragraphs, splitChunks, type Chunk } from "./chunks.ts";
-import { LimitError, runClaude } from "./claude.ts";
+import {
+  applyParagraphFix,
+  fixInput,
+  glossaryBlock,
+  paragraphFixInput,
+  problemParagraphs,
+} from "./fix.ts";
+import { LimitError, runClaude, type Usage } from "./claude.ts";
 import { LANGUAGE, langFile, termMatch, type TermMatch } from "./lang.ts";
 import {
   buildGlossary,
@@ -29,8 +36,10 @@ export const TRANSLATE_DIR = "data/translate";
 
 const PROMPT = langFile(LANGUAGE, "prompt.md");
 const FIX_PROMPT = langFile(LANGUAGE, "fix-prompt.md");
+const FIX_PARAGRAPHS_PROMPT = langFile(LANGUAGE, "fix-paragraphs-prompt.md");
 
-export type Progress = { done: number; total: number };
+/** Parts done of all, and Claude's usage for the book so far (from the first part done in this run). */
+export type Progress = { done: number; total: number; usage?: Usage };
 
 type Run = typeof runClaude;
 
@@ -41,6 +50,9 @@ const HARD_KINDS = new Set<Problem["kind"]>(["latin", "russian-letters"]);
 
 /** This many chunks in a row the checker fails on mean the Python side is broken: the translation stops. */
 const MAX_FAILED_CHECKS = 3;
+
+/** Chunks translated at once, each by its own `claude -p`. */
+const PARALLEL = 8;
 
 type Options = {
   dir: string;
@@ -55,6 +67,15 @@ type Options = {
 
 /** A chunk whose first translation had problems: what was found and what is left after the fix calls. */
 type ReportEntry = { chunk: string; found: Problem[]; left: Problem[] };
+
+const USAGE = z.object({
+  calls: z.number(),
+  input: z.number(),
+  output: z.number(),
+  cacheWrite: z.number(),
+  cacheRead: z.number(),
+  costUsd: z.number(),
+});
 
 const REPORT = z.array(
   z.object({
@@ -110,39 +131,11 @@ function termsIn(text: string, terms: Term[], match: TermMatch): Term[] {
   return terms.filter((t) => hasTerm(text, t, match));
 }
 
-function glossaryBlock(terms: Term[]): string[] {
-  if (!terms.length) return [];
-  const lines = terms.map(
-    (t) => `- ${t.source}: ${t.uk}${t.note ? ` (${t.note})` : ""}`,
-  );
-  return ["<glossary>", ...lines, "</glossary>"];
-}
-
 function translateInput(text: string, terms: Term[], context?: string): string {
   const parts = glossaryBlock(terms);
   if (context) parts.push("<context>", context, "</context>");
   parts.push("<text>", text, "</text>");
   return parts.join("\n");
-}
-
-function fixInput(
-  source: string,
-  translation: string,
-  problems: Problem[],
-  terms: Term[],
-): string {
-  return [
-    ...glossaryBlock(terms),
-    "<source>",
-    source,
-    "</source>",
-    "<translation>",
-    translation,
-    "</translation>",
-    "<problems>",
-    ...problems.map((p) => `- ${p.kind}: ${p.detail}`),
-    "</problems>",
-  ].join("\n");
 }
 
 /**
@@ -156,6 +149,7 @@ export async function translateBook(
   book: Book;
   epub?: string;
   report: { fixed: number; problems: number; unchecked: number };
+  usage: Usage;
 }> {
   const {
     dir,
@@ -166,19 +160,45 @@ export async function translateBook(
     candidates: findCandidates = candidates,
   } = opts;
 
+  /** Claude's usage for the whole book, kept in usage.json so a resumed translation adds to it. */
+  const usageFile = join(dir, "usage.json");
+  const savedUsage = await readIfExists(usageFile);
+  const usage: Usage = savedUsage
+    ? USAGE.parse(JSON.parse(savedUsage))
+    : {
+        calls: 0,
+        input: 0,
+        output: 0,
+        cacheWrite: 0,
+        cacheRead: 0,
+        costUsd: 0,
+      };
+  let savingUsage = Promise.resolve();
+  const addUsage = (one: Usage) => {
+    for (const key of Object.keys(usage) as (keyof Usage)[])
+      usage[key] += one[key];
+    savingUsage = savingUsage.then(() =>
+      writeFile(usageFile, JSON.stringify(usage, null, 2)),
+    );
+  };
+
+  /** The wait for a usage limit's reset; calls hitting the limit while it runs share it. */
+  let limitWait: Promise<void> | undefined;
+  const waitForReset = (resetAt: Date) =>
+    (limitWait ??= (async () => {
+      await opts.onLimit(resetAt);
+      await sleep(Math.max(MIN_LIMIT_WAIT_MS, resetAt.getTime() - Date.now()));
+    })().finally(() => (limitWait = undefined)));
+
   /** A usage limit waits for its reset and retries; any other failure gets one retry. */
   const call: Run = async (prompt, input) => {
     let failed = false;
     for (;;) {
       try {
-        return await run(prompt, input);
+        return await run(prompt, input, addUsage);
       } catch (error) {
-        if (error instanceof LimitError) {
-          await opts.onLimit(error.resetAt);
-          await sleep(
-            Math.max(MIN_LIMIT_WAIT_MS, error.resetAt.getTime() - Date.now()),
-          );
-        } else if (failed) throw error;
+        if (error instanceof LimitError) await waitForReset(error.resetAt);
+        else if (failed) throw error;
         else failed = true;
       }
     }
@@ -223,6 +243,13 @@ export async function translateBook(
     ? REPORT.parse(JSON.parse(savedReport))
     : [];
 
+  /** Chunks finish at once, so report.json is written one save after another, each with the latest report. */
+  let saving = Promise.resolve();
+  const saveReport = () =>
+    (saving = saving.then(() =>
+      writeFile(reportFile, JSON.stringify(report, null, 2)),
+    ));
+
   const unchecked = (entry?: ReportEntry) =>
     !!entry?.left.some((p) => p.kind === "check-failed");
 
@@ -230,6 +257,40 @@ export async function translateBook(
    * Checks a translation and, when problems remain, asks for a fix; a second fix only when Latin or Russian
    * letters survive the first. Records the chunk in report.json.
    */
+  const match = await termMatch(
+    bookLanguage(source.chapters.map((c) => c.text).join("\n")),
+  );
+
+  /**
+   * One fix call: only the paragraphs with problems when they can be placed, else the whole chunk. A paragraph
+   * reply that doesn't fit leaves the translation as it was.
+   */
+  const fix = async (
+    source: string,
+    translation: string,
+    problems: Problem[],
+    terms: Term[],
+  ): Promise<string> => {
+    const sourceParts = paragraphs(source);
+    const parts = paragraphs(translation);
+    const indices = problemParagraphs(
+      problems,
+      sourceParts,
+      parts,
+      terms,
+      match,
+    );
+    if (!indices)
+      return (
+        await call(FIX_PROMPT, fixInput(source, translation, problems, terms))
+      ).trim();
+    const reply = await call(
+      FIX_PARAGRAPHS_PROMPT,
+      paragraphFixInput(sourceParts, parts, indices, problems, terms),
+    );
+    return applyParagraphFix(parts, indices, reply) ?? translation;
+  };
+
   const checkAndFix = async (
     name: string,
     chunk: Chunk,
@@ -251,9 +312,7 @@ export async function translateBook(
       if (round === 2 && !left.some((p) => HARD_KINDS.has(p.kind))) break;
       const fixed = await checkOrKeep({
         ...input,
-        translation: (
-          await call(FIX_PROMPT, fixInput(chunk.text, translation, left, terms))
-        ).trim(),
+        translation: await fix(chunk.text, translation, left, terms),
       });
       const fixFailed = fixed.problems.some((p) => p.kind === "check-failed");
       if (!fixFailed && fixed.problems.length < left.length) {
@@ -263,17 +322,19 @@ export async function translateBook(
     }
     report = report.filter((r) => r.chunk !== name);
     if (found.length) report.push({ chunk: name, found, left });
-    await writeFile(reportFile, JSON.stringify(report, null, 2));
+    await saveReport();
     return { translation, failed };
   };
 
-  const match = await termMatch(
-    bookLanguage(source.chapters.map((c) => c.text).join("\n")),
-  );
   const chunks = splitChunks(source);
   const translated: string[] = [];
+  let finished = 0;
   let failedInRow = 0;
-  for (const [index, chunk] of chunks.entries()) {
+  let stop: unknown;
+
+  /** Translates, checks and saves chunk `index`, unless it is already done. */
+  const translateChunk = async (index: number) => {
+    const chunk = chunks[index]!;
     const name = String(index + 1).padStart(4, "0");
     const chunkFile = join(dir, "chunks", `${name}.md`);
     const ukFile = join(dir, "chunks", `${name}.uk.md`);
@@ -281,18 +342,19 @@ export async function translateBook(
     const done = await readIfExists(ukFile);
     const recheck = unchecked(report.find((r) => r.chunk === name));
     if (done !== undefined && !recheck) {
-      translated.push(done);
-      continue;
+      translated[index] = done;
+      return;
     }
 
     const terms = termsIn(chunk.text, glossary.terms, match);
-    const context = paragraphs(translated.at(-1) ?? "").at(-1);
+    // The previous chunk's source: its translation may still be running.
+    const context = paragraphs(chunks[index - 1]?.text ?? "").at(-1);
     const raw =
       done ??
       (await call(PROMPT, translateInput(chunk.text, terms, context))).trim();
     const { translation, failed } = await checkAndFix(name, chunk, terms, raw);
     await writeFile(ukFile, translation);
-    translated.push(translation);
+    translated[index] = translation;
     failedInRow = failed ? failedInRow + 1 : 0;
     if (failedInRow >= MAX_FAILED_CHECKS) {
       const detail = report.find((r) => r.chunk === name)?.left[0]?.detail;
@@ -300,9 +362,30 @@ export async function translateBook(
         `The chunk checker failed on ${MAX_FAILED_CHECKS} parts in a row (${detail}); the Python side looks broken. The parts are saved and get checked when the translation continues`,
       );
     }
-    await opts.onProgress({ done: index + 1, total: chunks.length });
-  }
-  await writeFile(reportFile, JSON.stringify(report, null, 2));
+  };
+
+  /** Takes the next chunk until none is left; the first error stops new chunks, the running ones finish. */
+  let next = 0;
+  const worker = async () => {
+    while (stop === undefined && next < chunks.length) {
+      const index = next++;
+      try {
+        await translateChunk(index);
+      } catch (error) {
+        stop ??= error;
+        return;
+      }
+      finished += 1;
+      await opts.onProgress({
+        done: finished,
+        total: chunks.length,
+        usage: { ...usage },
+      });
+    }
+  };
+  await Promise.all(Array.from({ length: PARALLEL }, worker));
+  if (stop !== undefined) throw stop;
+  await saveReport();
 
   const text = assemble(glossary.title, glossary.author, translated);
   const md = join(dir, "book.uk.md");
@@ -310,9 +393,11 @@ export async function translateBook(
   const epubFile = join(dir, "book.uk.epub");
   const epub = (await pandoc(md, epubFile)) ? epubFile : undefined;
 
+  await savingUsage;
   return {
     book: parseMarkdown(text),
     epub,
+    usage,
     report: {
       fixed: report.filter((r) => !r.left.length).length,
       problems: report.filter((r) => r.left.length && !unchecked(r)).length,

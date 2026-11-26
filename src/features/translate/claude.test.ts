@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { limitReset } from "./claude.ts";
+import { limitReset, usageOf } from "./claude.ts";
 
 const now = new Date(2026, 10, 25, 10, 0, 0);
 const MIN30 = 30 * 60 * 1000;
@@ -47,5 +47,39 @@ describe("limitReset", () => {
       now,
     );
     expect(reset).toEqual(new Date(now.getTime() + MIN30));
+  });
+});
+
+describe("usageOf", () => {
+  it("reads the tokens and the cost of a reply", () => {
+    expect(
+      usageOf({
+        usage: {
+          input_tokens: 2,
+          output_tokens: 13,
+          cache_creation_input_tokens: 2555,
+          cache_read_input_tokens: 100,
+        },
+        total_cost_usd: 0.01,
+      }),
+    ).toEqual({
+      calls: 1,
+      input: 2,
+      output: 13,
+      cacheWrite: 2555,
+      cacheRead: 100,
+      costUsd: 0.01,
+    });
+  });
+
+  it("counts a reply without usage as one call with nothing", () => {
+    expect(usageOf({})).toEqual({
+      calls: 1,
+      input: 0,
+      output: 0,
+      cacheWrite: 0,
+      cacheRead: 0,
+      costUsd: 0,
+    });
   });
 });
