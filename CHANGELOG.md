@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1 (2026-11-26)
+
+### Fixes
+
+- voicing at low priority with a limited GPU cache (159e91a)
+
 ## 0.9.0 (2026-11-26)
 
 ### Features
