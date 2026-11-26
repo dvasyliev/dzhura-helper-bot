@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 (2026-11-26)
+
+### Features
+
+- one action card for a sent book or link (69bb33c)
+
 ## 0.3.0 (2026-11-26)
 
 ### Features
