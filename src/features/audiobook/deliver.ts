@@ -34,6 +34,12 @@ export async function voiceBook(
   const voiced: string[] = [];
   let linked = false;
   const syncAtEnd = mode === "regen" && (await hasGroup());
+  // Also after a failed chapter: the chapters re-voiced before it still reach the group.
+  const syncVoiced = async () => {
+    const synced = await syncBook(api, folder);
+    if (!synced) await sendAudio(api, chatId, book, voiced, paths.audioDir);
+    else await sendDone(api, chatId, synced);
+  };
   try {
     for await (const event of voiceChapters(job)) {
       if ("report" in event) {
@@ -59,14 +65,15 @@ export async function voiceBook(
       if (!synced) await sendAudio(api, chatId, book, files, paths.audioDir);
       else if (!linked) linked = await sendDone(api, chatId, synced);
     }
-  } finally {
-    // Also after a failed chapter: the chapters re-voiced before it still reach the group.
-    if (syncAtEnd) {
-      const synced = await syncBook(api, folder);
-      if (!synced) await sendAudio(api, chatId, book, voiced, paths.audioDir);
-      else await sendDone(api, chatId, synced);
-    }
+  } catch (error) {
+    // The chapter's error is the one to report; a failed sync after it must not replace it.
+    if (syncAtEnd)
+      await syncVoiced().catch((syncError) =>
+        console.error("Library sync after a failed chapter:", syncError),
+      );
+    throw error;
   }
+  if (syncAtEnd) await syncVoiced();
 }
 
 /** `Done → <link>` to the first changed audio message; false when no audio message changed. */

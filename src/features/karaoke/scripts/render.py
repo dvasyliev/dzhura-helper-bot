@@ -66,11 +66,13 @@ def render(
         )
         os.replace(tmp, out)
 
-    full = out
+    # The full-quality render goes to the HQ name first, so an older video at `out` stays until its replacement is ready.
+    full = out[: -len(".mp4")] + " (HQ).mp4"
     encode(["-crf", "22"], full)
-    if os.path.getsize(full) > LIMIT:
-        full = out[: -len(".mp4")] + " (HQ).mp4"
-        os.replace(out, full)
+    if os.path.getsize(full) <= LIMIT:
+        os.replace(full, out)
+        full = out
+    else:
         kbps = int((LIMIT * 8 / duration - AUDIO_BITRATE) * 0.95 / 1000)
         encode(["-b:v", f"{kbps}k", "-maxrate", f"{kbps}k", "-bufsize", f"{kbps * 2}k"], out)
     return out, full

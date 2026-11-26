@@ -9,4 +9,4 @@ Do not ask how to carry out the plan; choose:
 
 ## Subagents
 
-Subagents that implement a task do not run `npm run check`; the Stop hook does. With `vitest` or `pytest`, they run only the unit tests of the files they touch (`npx vitest run <files>` or `uv run pytest <files>`). With `playwright`, the subagent on the end-to-end task runs only its spec files, never `npm run verify`, which runs once after the last task.
+Subagents that implement a task do not run `npm run check`; the Stop hook does. With `vitest` or `pytest`, they run only the unit tests of the files they touch (`npx vitest run <files>` or `uv run pytest <files>`). With `dupes`, they run `npm run dupes` before committing, and with `knip`, `npm run knip`: these find duplicates and unused exports across files, which a review of one task misses. With `playwright`, the subagent on the end-to-end task runs only its spec files, never `npm run verify`, which runs once after the last task.

@@ -109,6 +109,10 @@ describe("topicName", () => {
   it("cuts a long title to 128 characters", () => {
     expect(topicName({ title: "x".repeat(200) })).toHaveLength(128);
   });
+
+  it("never cuts an emoji in half", () => {
+    expect(topicName({ title: `${"x".repeat(127)}👍🏽` })).toBe("x".repeat(127));
+  });
 });
 
 describe("bookItems", () => {

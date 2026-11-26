@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
@@ -51,7 +52,8 @@ export async function saveState(
   file = LIBRARY_FILE,
 ): Promise<void> {
   await mkdir(dirname(file), { recursive: true });
-  const temp = `${file}.tmp`;
+  // A temp file of its own, so two saves at once never rename the same one.
+  const temp = `${file}.${randomUUID()}.tmp`;
   await writeFile(temp, JSON.stringify(state, null, 2));
   await rename(temp, file);
 }

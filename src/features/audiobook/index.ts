@@ -101,14 +101,17 @@ composer.hears(/^[\d\s,–-]+$/, async (ctx, next) => {
 });
 
 composer.command("regen", async (ctx) => {
-  if (!current) return ctx.reply("First send a book and pick a voice.");
+  if (!current)
+    return ctx.reply(
+      "Re-voices chapters of the book being voiced. First send a book and pick a voice, then /regen with chapter numbers: /regen 5 or /regen 5-7.",
+    );
   const { book, voice } = current;
   const all = chapters(book);
   const numbers = parseNumbers(ctx.match);
   const todo = all.filter((c) => numbers.includes(c.index + 1));
   if (!todo.length)
     return ctx.reply(
-      `Give chapter numbers from 1 to ${all.length}: /regen 5 or /regen 5-7`,
+      `Which chapters of «${book.title}» to re-voice with «${voice.name}»? Send /regen with numbers from 1 to ${all.length}: /regen 5 or /regen 5-7.`,
     );
   const { audioDir } = bookPaths(bookName(book), voice.name);
   const chatId = ctx.chat.id;
@@ -189,7 +192,7 @@ export const audiobook: Feature = {
   commands: [
     {
       command: "regen",
-      description: "Re-voice chapters of the last book: /regen 5 or /regen 5-7",
+      description: "🔁 Re-voice chapters",
     },
   ],
   composer,

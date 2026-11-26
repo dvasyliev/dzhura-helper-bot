@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadState, saveState, serial, type LibraryState } from "./state.js";
+import { loadState, saveState, serial, type LibraryState } from "./state.ts";
 
 async function tempFile(): Promise<string> {
   return join(await mkdtemp(join(tmpdir(), "library-")), "library.json");
@@ -33,6 +33,14 @@ describe("library state", () => {
     };
     await saveState(state, file);
     expect(await loadState(file)).toEqual(state);
+  });
+
+  it("two saves at once both finish", async () => {
+    const file = await tempFile();
+    const state: LibraryState = { topics: {} };
+    await expect(
+      Promise.all([saveState(state, file), saveState(state, file)]),
+    ).resolves.toBeDefined();
   });
 
   it("rejects a broken file", async () => {

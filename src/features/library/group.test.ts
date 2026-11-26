@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Api } from "grammy";
+import { GrammyError, type Api } from "grammy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hasGroup, resetUnavailable, withGroup } from "./group.ts";
 import { saveState } from "./state.ts";
@@ -43,7 +43,15 @@ describe("withGroup", () => {
   it("tells the owner once that the group is unavailable", async () => {
     await saveState({ chatId: -100, topics: {} }, file);
     const api = fakeApi();
-    const fail = () => Promise.reject(new Error("bot was kicked"));
+    const fail = () =>
+      Promise.reject(
+        new GrammyError(
+          "bot was kicked",
+          { ok: false, error_code: 403, description: "bot was kicked" },
+          "sendMessage",
+          {},
+        ),
+      );
     expect(await withGroup(api as unknown as Api, fail, file)).toBeUndefined();
     expect(await withGroup(api as unknown as Api, fail, file)).toBeUndefined();
     expect(api.sendMessage).toHaveBeenCalledTimes(1);
@@ -54,6 +62,17 @@ describe("withGroup", () => {
     resetUnavailable();
     await withGroup(api as unknown as Api, fail, file);
     expect(api.sendMessage).toHaveBeenCalledTimes(2);
+  });
+  it("names a local failure as a sync failure, every time", async () => {
+    await saveState({ chatId: -100, topics: {} }, file);
+    const api = fakeApi();
+    const fail = () => Promise.reject(new Error("EACCES: book.mp3"));
+    await withGroup(api as unknown as Api, fail, file);
+    await withGroup(api as unknown as Api, fail, file);
+    expect(api.sendMessage.mock.calls).toEqual([
+      [7, "Couldn't update the library (EACCES: book.mp3); sending here."],
+      [7, "Couldn't update the library (EACCES: book.mp3); sending here."],
+    ]);
   });
 });
 

@@ -1,127 +1,29 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { GrammyError, InputFile, type Api } from "grammy";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  version,
-  type FileItem,
-  type Item,
-  type TextItem,
-} from "./reconcile.ts";
+import { InputFile } from "grammy";
+import { describe, expect, it, vi } from "vitest";
+import { version, type TextItem } from "./reconcile.ts";
 import { loadState, type LibraryState } from "./state.ts";
-import { MAX_UPLOAD, messageLink, syncTopic } from "./topic.ts";
+import { MAX_UPLOAD, messageLink } from "./topic.ts";
+import {
+  CHAT,
+  apiError,
+  audio,
+  contents,
+  posted,
+  postedA,
+  topicHarness,
+} from "./topic.testing.ts";
 
 vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
 
-const CHAT = -1001234567890;
-
-function apiError(description: string): GrammyError {
-  return new GrammyError(
-    description,
-    { ok: false, error_code: 400, description },
-    "method",
-    {},
-  );
-}
-
-function fakeApi() {
-  let n = 100;
-  let thread = 5;
-  const file =
-    (field: string) =>
-    (..._args: unknown[]) => {
-      const id = n++;
-      return Promise.resolve({
-        message_id: id,
-        [field]: { file_id: `f${id}` },
-      });
-    };
-  return {
-    createForumTopic: vi.fn(() =>
-      Promise.resolve({ message_thread_id: thread++ }),
-    ),
-    sendMessage: vi.fn(() => Promise.resolve({ message_id: n++ })),
-    sendAudio: vi.fn(file("audio")),
-    sendDocument: vi.fn(file("document")),
-    sendVideo: vi.fn(file("video")),
-    editMessageText: vi.fn(() => Promise.resolve(true)),
-    editMessageMedia: vi.fn(() =>
-      Promise.resolve({ message_id: 1, audio: { file_id: "edited" } }),
-    ),
-    editMessageCaption: vi.fn(() => Promise.resolve(true)),
-    deleteMessage: vi.fn(() => Promise.resolve(true)),
-    pinChatMessage: vi.fn(() => Promise.resolve(true)),
-    editForumTopic: vi.fn(() => Promise.resolve(true)),
-  };
-}
-
-function audio(key: string, extra: Partial<FileItem> = {}): FileItem {
-  return {
-    key,
-    kind: "audio",
-    file: `/books/${key}.mp3`,
-    size: 1000,
-    mtime: 1,
-    title: key,
-    performer: "Book",
-    ...extra,
-  };
-}
-
-const contents: TextItem = {
-  key: "contents",
-  kind: "text",
-  text: "Contents",
-  pin: true,
-};
-
-let file: string;
-let api: ReturnType<typeof fakeApi>;
-
-beforeEach(async () => {
-  file = join(await mkdtemp(join(tmpdir(), "library-")), "library.json");
-  api = fakeApi();
-});
-
-function sync(state: LibraryState, items: Item[], probe = false) {
-  return syncTopic(
-    api as unknown as Api,
-    state,
-    "book",
-    "Author — Title",
-    items,
-    file,
-    { probe },
-  );
-}
-
-function posted(key: string, messageId: number, item: Item) {
-  return {
-    key,
-    messageId,
-    kind: item.kind,
-    version: version(item),
-    ...(item.kind === "text" ? {} : { fileId: `f-${key}` }),
-  };
-}
-
-/** Topic 3 holding audio `a` as message 10. */
-function postedA(a: FileItem): LibraryState {
-  return {
-    chatId: CHAT,
-    topics: {
-      book: { threadId: 3, messages: [posted("a", 10, a)], tooBig: {} },
-    },
-  };
-}
+const t = topicHarness();
+const { sync } = t;
 
 /** Message 11 was deleted and two audios sent again: the first uploaded, the second by its file id. */
 function expectResent(secondFileId: string) {
-  expect(api.deleteMessage).toHaveBeenCalledWith(CHAT, 11);
-  expect(api.sendAudio).toHaveBeenCalledTimes(2);
-  expect(api.sendAudio.mock.calls[0]![1]).toBeInstanceOf(InputFile);
-  expect(api.sendAudio.mock.calls[1]![1]).toBe(secondFileId);
+  expect(t.api.deleteMessage).toHaveBeenCalledWith(CHAT, 11);
+  expect(t.api.sendAudio).toHaveBeenCalledTimes(2);
+  expect(t.api.sendAudio.mock.calls[0]![1]).toBeInstanceOf(InputFile);
+  expect(t.api.sendAudio.mock.calls[1]![1]).toBe(secondFileId);
 }
 
 describe("syncTopic", () => {
@@ -129,16 +31,16 @@ describe("syncTopic", () => {
     const state: LibraryState = { chatId: CHAT, topics: {} };
     const result = await sync(state, [contents, audio("a")]);
 
-    expect(api.createForumTopic).toHaveBeenCalledWith(CHAT, "Author — Title");
-    expect(api.sendMessage).toHaveBeenCalledWith(
+    expect(t.api.createForumTopic).toHaveBeenCalledWith(CHAT, "Author — Title");
+    expect(t.api.sendMessage).toHaveBeenCalledWith(
       CHAT,
       "Contents",
       expect.objectContaining({ message_thread_id: 5 }),
     );
-    expect(api.pinChatMessage).toHaveBeenCalledWith(CHAT, 100, {
+    expect(t.api.pinChatMessage).toHaveBeenCalledWith(CHAT, 100, {
       disable_notification: true,
     });
-    const [, input, options] = api.sendAudio.mock.calls[0] as unknown as [
+    const [, input, options] = t.api.sendAudio.mock.calls[0] as unknown as [
       number,
       InputFile,
       Record<string, unknown>,
@@ -167,7 +69,7 @@ describe("syncTopic", () => {
         fileId: "f101",
       },
     ]);
-    expect(await loadState(file)).toEqual(state);
+    expect(await loadState(t.file)).toEqual(state);
   });
 
   it("edits a changed audio with editMessageMedia", async () => {
@@ -181,12 +83,12 @@ describe("syncTopic", () => {
     const changed = audio("a", { mtime: 2 });
     const result = await sync(state, [changed]);
 
-    expect(api.editMessageMedia).toHaveBeenCalledWith(
+    expect(t.api.editMessageMedia).toHaveBeenCalledWith(
       CHAT,
       10,
       expect.objectContaining({ type: "audio", title: "a", performer: "Book" }),
     );
-    expect(api.sendAudio).not.toHaveBeenCalled();
+    expect(t.api.sendAudio).not.toHaveBeenCalled();
     expect(result.changed).toEqual(["a"]);
     expect(state.topics.book!.messages[0]).toMatchObject({
       messageId: 10,
@@ -233,7 +135,7 @@ describe("syncTopic", () => {
     const text: TextItem = { key: "x", kind: "text", text: "Now text" };
     const result = await sync(state, [text]);
 
-    expect(api.editMessageCaption).toHaveBeenCalledWith(
+    expect(t.api.editMessageCaption).toHaveBeenCalledWith(
       CHAT,
       10,
       expect.objectContaining({ caption: "Now text" }),
@@ -255,12 +157,12 @@ describe("syncTopic", () => {
         },
       },
     };
-    api.editMessageMedia.mockRejectedValueOnce(
+    t.api.editMessageMedia.mockRejectedValueOnce(
       apiError("Bad Request: message to edit not found"),
     );
     const result = await sync(state, [audio("a", { mtime: 2 }), b]);
 
-    expect(api.deleteMessage).toHaveBeenCalledWith(CHAT, 10);
+    expect(t.api.deleteMessage).toHaveBeenCalledWith(CHAT, 10);
     expectResent("f-b");
     expect(result.changed).toEqual(["a", "b"]);
   });
@@ -276,28 +178,28 @@ describe("syncTopic", () => {
         },
       },
     };
-    api.editMessageText.mockRejectedValueOnce(
+    t.api.editMessageText.mockRejectedValueOnce(
       apiError("Bad Request: message is not modified"),
     );
     const result = await sync(state, [{ ...contents, text: "New" }]);
 
-    expect(api.sendMessage).not.toHaveBeenCalled();
-    expect(api.deleteMessage).not.toHaveBeenCalled();
+    expect(t.api.sendMessage).not.toHaveBeenCalled();
+    expect(t.api.deleteMessage).not.toHaveBeenCalled();
     expect(result.changed).toEqual([]);
   });
 
   it("recreates a deleted topic", async () => {
     const a = audio("a");
     const state = postedA(a);
-    api.sendAudio.mockRejectedValueOnce(
+    t.api.sendAudio.mockRejectedValueOnce(
       apiError("Bad Request: message thread not found"),
     );
     const result = await sync(state, [a, audio("b")]);
 
-    expect(api.createForumTopic).toHaveBeenCalledWith(CHAT, "Author — Title");
+    expect(t.api.createForumTopic).toHaveBeenCalledWith(CHAT, "Author — Title");
     expect(state.topics.book!.threadId).toBe(5);
-    expect(api.sendAudio.mock.calls.at(-2)![1]).toBe("f-a");
-    expect(api.sendAudio.mock.calls.at(-1)![2]).toMatchObject({
+    expect(t.api.sendAudio.mock.calls.at(-2)![1]).toBe("f-a");
+    expect(t.api.sendAudio.mock.calls.at(-1)![2]).toMatchObject({
       message_thread_id: 5,
     });
     expect(result.changed).toEqual(["a", "b"]);
@@ -309,7 +211,7 @@ describe("syncTopic", () => {
     async (text) => {
       const a = audio("a");
       const state = postedA(a);
-      api.sendAudio.mockRejectedValueOnce(apiError(`Bad Request: ${text}`));
+      t.api.sendAudio.mockRejectedValueOnce(apiError(`Bad Request: ${text}`));
       await sync(state, [a, audio("b")]);
       expect(state.topics.book!.threadId).toBe(5);
     },
@@ -318,16 +220,16 @@ describe("syncTopic", () => {
   it("probe: leaves an existing, unchanged topic alone", async () => {
     const a = audio("a");
     const state = postedA(a);
-    api.editForumTopic.mockRejectedValueOnce(
+    t.api.editForumTopic.mockRejectedValueOnce(
       apiError("Bad Request: TOPIC_NOT_MODIFIED"),
     );
     const result = await sync(state, [a], true);
 
-    expect(api.editForumTopic).toHaveBeenCalledWith(CHAT, 3, {
+    expect(t.api.editForumTopic).toHaveBeenCalledWith(CHAT, 3, {
       name: "Author — Title",
     });
-    expect(api.createForumTopic).not.toHaveBeenCalled();
-    expect(api.sendAudio).not.toHaveBeenCalled();
+    expect(t.api.createForumTopic).not.toHaveBeenCalled();
+    expect(t.api.sendAudio).not.toHaveBeenCalled();
     expect(result.changed).toEqual([]);
   });
 
@@ -336,16 +238,19 @@ describe("syncTopic", () => {
     async (text) => {
       const a = audio("a");
       const state = postedA(a);
-      api.editForumTopic.mockRejectedValueOnce(
+      t.api.editForumTopic.mockRejectedValueOnce(
         apiError(`Bad Request: ${text}`),
       );
       const result = await sync(state, [a], true);
 
-      expect(api.createForumTopic).toHaveBeenCalledWith(CHAT, "Author — Title");
+      expect(t.api.createForumTopic).toHaveBeenCalledWith(
+        CHAT,
+        "Author — Title",
+      );
       expect(state.topics.book!.threadId).toBe(5);
-      expect(api.sendAudio).toHaveBeenCalledTimes(1);
-      expect(api.sendAudio.mock.calls[0]![1]).toBe("f-a");
-      expect(api.sendAudio.mock.calls[0]![2]).toMatchObject({
+      expect(t.api.sendAudio).toHaveBeenCalledTimes(1);
+      expect(t.api.sendAudio.mock.calls[0]![1]).toBe("f-a");
+      expect(t.api.sendAudio.mock.calls[0]![2]).toMatchObject({
         message_thread_id: 5,
       });
       expect(result.changed).toEqual(["a"]);
@@ -356,12 +261,12 @@ describe("syncTopic", () => {
     const a = audio("a");
     const state = postedA(a);
     await sync(state, [a]);
-    expect(api.editForumTopic).not.toHaveBeenCalled();
+    expect(t.api.editForumTopic).not.toHaveBeenCalled();
   });
 
   it("throws when the recreated topic is missing too", async () => {
     const state: LibraryState = { chatId: CHAT, topics: {} };
-    api.sendAudio.mockRejectedValue(
+    t.api.sendAudio.mockRejectedValue(
       apiError("Bad Request: message thread not found"),
     );
     await expect(sync(state, [audio("a")])).rejects.toThrow(
@@ -375,8 +280,8 @@ describe("syncTopic", () => {
     await sync(state, [contents, big]);
     await sync(state, [contents, big]);
 
-    expect(api.sendAudio).not.toHaveBeenCalled();
-    const notes = api.sendMessage.mock.calls.filter(
+    expect(t.api.sendAudio).not.toHaveBeenCalled();
+    const notes = t.api.sendMessage.mock.calls.filter(
       (call) => (call as unknown[])[0] === 7,
     );
     expect(notes).toEqual([

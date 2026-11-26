@@ -208,7 +208,13 @@ export async function bookItems(
 
 export function topicName(book: { title: string; author?: string }): string {
   const name = book.author ? `${book.author} — ${book.title}` : book.title;
-  return name.slice(0, MAX_TOPIC_NAME);
+  // Whole characters only: a cut through an emoji would leave half of it.
+  let result = "";
+  for (const { segment } of new Intl.Segmenter().segment(name)) {
+    if (result.length + segment.length > MAX_TOPIC_NAME) break;
+    result += segment;
+  }
+  return result;
 }
 
 /** Syncs the topic of `folder` (or of its original when it is a translation); undefined = no group, send to the private chat. `probe`: see `syncTopic`. */

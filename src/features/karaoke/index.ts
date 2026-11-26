@@ -194,10 +194,14 @@ async function start(
   }
   last = { url: job.url, id: job.id, versions: job.versions };
   pending = undefined;
-  if (ctx.callbackQuery) {
+  if (ctx.callbackQuery && chatId !== ctx.chat?.id) {
+    // Pressed in the library group: the progress goes to the private chat.
+    await ctx.answerCallbackQuery(
+      "Started, the progress is in the private chat.",
+    );
+  } else if (ctx.callbackQuery) {
     await ctx.answerCallbackQuery();
-    if (chatId === ctx.chat?.id)
-      await ctx.editMessageReplyMarkup().catch(() => {});
+    await ctx.editMessageReplyMarkup().catch(() => {});
   }
   return true;
 }

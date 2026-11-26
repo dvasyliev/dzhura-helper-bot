@@ -1,4 +1,4 @@
-import type { Api } from "grammy";
+import { GrammyError, HttpError, type Api } from "grammy";
 import { config } from "../../config.ts";
 import { LIBRARY_FILE, loadState, serial, type LibraryState } from "./state.ts";
 import type { Synced } from "./topic.ts";
@@ -31,18 +31,27 @@ export function withGroup(
     try {
       return await work(state);
     } catch (error) {
-      if (!told) {
-        told = true;
-        await api
-          .sendMessage(
-            config.ownerId,
-            `The library group is unavailable (${error instanceof Error ? error.message : String(error)}); sending here.`,
-          )
-          .catch((sendError) =>
-            console.error("sendMessage failed:", sendError),
-          );
-      }
+      // Telegram refused or could not be reached: the group is unavailable, said once. Anything else (a file that
+      // can't be read) is this sync's own failure, said every time.
+      const telegram =
+        error instanceof GrammyError || error instanceof HttpError;
+      if (telegram && told) return undefined;
+      if (telegram) told = true;
+      const reason =
+        error instanceof GrammyError ? error.description : message(error);
+      await api
+        .sendMessage(
+          config.ownerId,
+          telegram
+            ? `The library group is unavailable (${reason}); sending here.`
+            : `Couldn't update the library (${reason}); sending here.`,
+        )
+        .catch((sendError) => console.error("sendMessage failed:", sendError));
       return undefined;
     }
   });
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

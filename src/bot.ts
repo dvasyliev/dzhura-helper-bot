@@ -3,17 +3,15 @@ import { Bot, InlineKeyboard, type Context } from "grammy";
 import { cardFor, routeText, type Card } from "./card.ts";
 import { config } from "./config.ts";
 import { FEATURES } from "./features/index.ts";
-import {
-  PUBLISH_COMMAND,
-  library,
-  privateOnly,
-} from "./features/library/index.ts";
+import { label, menuCommands } from "./commands.ts";
+import { library, privateOnly } from "./features/library/index.ts";
 import type { Feature } from "./features/types.ts";
 import { receiveBook, type Input } from "./input.ts";
 
 export function createBot(): Bot {
   const bot = new Bot(config.botToken);
-  bot.api.config.use(autoRetry({ maxDelaySeconds: 300 }));
+  // Waits out rate limits and network drops, but gives up after a few tries so a job can't hang forever.
+  bot.api.config.use(autoRetry({ maxDelaySeconds: 300, maxRetryAttempts: 5 }));
 
   bot.use(async (ctx, next) => {
     if (ctx.from?.id === config.ownerId) await next();
@@ -23,14 +21,7 @@ export function createBot(): Bot {
 
   // The «Menu» button next to the input field lists these commands.
   void bot.api
-    .setMyCommands([
-      { command: "menu", description: "What the bot can do" },
-      PUBLISH_COMMAND,
-      ...FEATURES.flatMap((f) => [
-        { command: f.id, description: label(f) },
-        ...(f.commands ?? []),
-      ]),
-    ])
+    .setMyCommands(menuCommands(FEATURES))
     .catch((error) => console.error("setMyCommands failed:", error));
 
   bot.command(["start", "menu"], (ctx) =>
@@ -92,10 +83,6 @@ function open(ctx: Context, feature: Feature) {
   return ctx.reply(
     feature.composer ? (feature.hint ?? feature.title) : NOT_READY,
   );
-}
-
-function label(feature: Feature): string {
-  return feature.composer ? feature.title : `${feature.title} (soon)`;
 }
 
 function menu(): InlineKeyboard {

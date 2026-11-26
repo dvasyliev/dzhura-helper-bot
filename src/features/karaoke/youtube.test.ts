@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { youtube } from "./youtube.ts";
+import { uploads, youtube } from "./youtube.ts";
 
 type Seen = { method: string; url: string; body: string };
 
@@ -279,5 +279,23 @@ describe("youtube.publish", () => {
     );
     const insert = google.seen.find((r) => r.url.startsWith("/api/upload"))!;
     expect(JSON.parse(insert.body).snippet.title).toHaveLength(100);
+  });
+});
+
+describe("uploads", () => {
+  it("gives the video ids by title, without the token", () => {
+    const store = path.join(
+      mkdtempSync(path.join(tmpdir(), "yt-")),
+      "youtube.json",
+    );
+    writeFileSync(
+      store,
+      JSON.stringify({ refreshToken: "secret", videos: { A: "1" } }),
+    );
+    expect(uploads(store)).toEqual({ A: "1" });
+  });
+
+  it("is empty without the store file", () => {
+    expect(uploads(path.join(tmpdir(), "missing-youtube.json"))).toEqual({});
   });
 });

@@ -1,13 +1,23 @@
 import { mkdir, mkdtemp, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { karaokeItems, makeButton, songs, type Song } from "./karaoke.ts";
+import type { Api } from "grammy";
+import { describe, expect, it, vi } from "vitest";
+import {
+  karaokeItems,
+  makeButton,
+  songs,
+  syncKaraoke,
+  type Song,
+} from "./karaoke.ts";
+import { saveState } from "./state.ts";
+
+vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
 
 const meta = { duration: 10, width: 640, height: 360 };
 
 function song(folder: string, files: Song["files"]): Song {
-  return { folder, id: `id-${folder}`, meta, files };
+  return { folder, name: folder, id: `id-${folder}`, meta, files };
 }
 
 const file = (name: string, mtime = 1) => ({ file: name, size: 5, mtime });
@@ -106,5 +116,72 @@ describe("songs", () => {
       size: 1,
       mtime: 100000,
     });
+  });
+
+  it("finds the videos of a song whose folder has its YouTube id added", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "karaoke-"));
+    await mkdir(join(dir, "S (abc)"));
+    await writeFile(
+      join(dir, "S (abc)/meta.json"),
+      JSON.stringify({ id: "abc", ...meta }),
+    );
+    await writeFile(join(dir, "S (abc)/S (Vocals).mp4"), "x");
+
+    const [found] = await songs(dir);
+    expect(found).toMatchObject({ folder: "S (abc)", name: "S" });
+    expect(found!.files.vocals?.file).toBe(join(dir, "S (abc)/S (Vocals).mp4"));
+    const items = karaokeItems([found!], [], {});
+    expect(items.map((i) => i.key)).toEqual([
+      "S (abc)/music",
+      "S (abc)/vocals",
+    ]);
+    expect(items[1]).toMatchObject({ caption: "S (Vocals)" });
+  });
+
+  it("skips a song whose meta.json lacks what the video needs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "karaoke-"));
+    await mkdir(join(dir, "S"));
+    await writeFile(join(dir, "S/meta.json"), JSON.stringify({ id: "abc" }));
+    await writeFile(join(dir, "S/S (Vocals).mp4"), "x");
+    expect(await songs(dir)).toEqual([]);
+  });
+});
+
+describe("syncKaraoke", () => {
+  it("posts each song's two versions in the karaoke topic", async () => {
+    const root = await mkdtemp(join(tmpdir(), "karaoke-sync-"));
+    const dirs = {
+      karaoke: join(root, "karaoke"),
+      youtube: join(root, "youtube.json"),
+      state: join(root, "library.json"),
+    };
+    await mkdir(join(dirs.karaoke, "S"), { recursive: true });
+    await writeFile(
+      join(dirs.karaoke, "S/meta.json"),
+      JSON.stringify({ id: "abcdefghijk", ...meta }),
+    );
+    await writeFile(join(dirs.karaoke, "S/S (Karaoke).mp4"), "x");
+    await writeFile(
+      dirs.youtube,
+      JSON.stringify({
+        refreshToken: "secret",
+        videos: { "S (Karaoke)": "yt1" },
+      }),
+    );
+    await saveState({ chatId: -100, topics: {} }, dirs.state);
+    let id = 1;
+    const api = {
+      createForumTopic: vi.fn(() => Promise.resolve({ message_thread_id: 9 })),
+      sendMessage: vi.fn(() => Promise.resolve({ message_id: id++ })),
+    };
+
+    const synced = await syncKaraoke(api as unknown as Api, dirs);
+
+    expect(api.createForumTopic).toHaveBeenCalledWith(-100, "🎤 Karaoke");
+    expect(api.sendMessage.mock.calls.map((c) => (c as unknown[])[1])).toEqual([
+      "S (Karaoke)\nhttps://youtu.be/yt1",
+      "⏳ S (Vocals) — not made yet",
+    ]);
+    expect(synced?.changed).toEqual(["S/music", "S/vocals"]);
   });
 });

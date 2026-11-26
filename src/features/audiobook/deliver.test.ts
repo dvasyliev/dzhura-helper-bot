@@ -121,6 +121,16 @@ describe("voiceBook", () => {
     );
   });
 
+  it("regen keeps the chapter's error when the sync after it fails too", async () => {
+    events([{ chapter: 0, error: "boom" }]);
+    vi.mocked(syncBook).mockRejectedValueOnce(
+      new Error("Invalid library.json"),
+    );
+    await expect(
+      voiceBook(fakeApi() as unknown as Api, 5, book, voice, todo, "regen"),
+    ).rejects.toThrow("chapter «001 One»: boom");
+  });
+
   it("regen without a group sends each chapter as it finishes", async () => {
     vi.mocked(hasGroup).mockResolvedValue(false);
     const api = fakeApi();

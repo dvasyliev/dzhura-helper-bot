@@ -1,9 +1,19 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Context } from "grammy";
 import type { ChatMember } from "grammy/types";
 import type { Api } from "grammy";
 import { bookFolders, syncBook } from "./books.ts";
-import { keepsTopics, missingRights, privateOnly, publish } from "./index.ts";
+import {
+  keepsTopics,
+  memberChange,
+  missingRights,
+  privateOnly,
+  publish,
+} from "./index.ts";
+import { loadState, saveState } from "./state.ts";
 import { syncKaraoke } from "./karaoke.ts";
 import type { Synced } from "./topic.ts";
 
@@ -99,5 +109,42 @@ describe("publish", () => {
     });
     expect(syncKaraoke).toHaveBeenCalledWith(api, undefined, { probe: true });
     expect(reply).toHaveBeenCalledWith("Library is up to date: 2 topics.");
+  });
+});
+
+describe("memberChange", () => {
+  const group = (id: number) =>
+    ({ id, type: "supergroup", title: "Library", is_forum: true }) as const;
+  const left = { status: "left", user } as unknown as ChatMember;
+
+  it("saves the group and says which rights are missing", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "member-")), "library.json");
+    expect(await memberChange(group(-1), admin, file)).toBe(
+      "Library group saved.",
+    );
+    expect(await memberChange(group(-1), plain, file)).toBe(
+      "Library group saved, but I need: manage topics, delete messages, pin messages.",
+    );
+    expect((await loadState(file)).chatId).toBe(-1);
+  });
+
+  it("forgets the group on leaving, keeping its topics for a return", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "member-")), "library.json");
+    const topic = { threadId: 3, messages: [], tooBig: {} };
+    await saveState({ chatId: -1, topics: { a: topic } }, file);
+    expect(await memberChange(group(-1), left, file)).toBe(
+      "Removed from the library group; results come here again.",
+    );
+    expect(await loadState(file)).toEqual({
+      lastChatId: -1,
+      topics: { a: topic },
+    });
+    expect(await memberChange(group(-2), left, file)).toBeUndefined();
+  });
+
+  it("ignores chats that are not supergroups", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "member-")), "library.json");
+    const chat = { id: 5, type: "group", title: "x" } as const;
+    expect(await memberChange(chat, admin, file)).toBeUndefined();
   });
 });

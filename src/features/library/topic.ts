@@ -140,12 +140,13 @@ export async function syncTopic(
       continue;
     }
     if (topic.tooBig[item.key] === version(item)) continue;
-    topic.tooBig[item.key] = version(item);
-    await save();
+    // Recorded only once the owner was told, so a failed note is sent again next time.
     await api.sendMessage(
       config.ownerId,
       `Too big for Telegram (over 50 MB), not posted: ${item.file}`,
     );
+    topic.tooBig[item.key] = version(item);
+    await save();
   }
 
   const changed: string[] = [];
@@ -221,7 +222,11 @@ export async function syncTopic(
       };
     }
     const reused = [...removed, ...lost].find(
-      (m) => m.key === item.key && m.version === version(item) && m.fileId,
+      (m) =>
+        m.key === item.key &&
+        m.kind === item.kind &&
+        m.version === version(item) &&
+        m.fileId,
     )?.fileId;
     const input = reused ?? upload(item);
     const options = { ...thread, ...mediaOptions(item) };
@@ -259,7 +264,8 @@ export async function syncTopic(
   }
 
   return {
-    changed,
+    // A recreated topic sends again keys already sent before it was lost.
+    changed: [...new Set(changed)],
     link: (wantedKey) => {
       const message = topic.messages.find((m) => m.key === wantedKey);
       return message && messageLink(chatId, topic.threadId, message.messageId);

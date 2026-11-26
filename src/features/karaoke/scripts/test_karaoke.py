@@ -172,6 +172,16 @@ def test_render(monkeypatch: pytest.MonkeyPatch) -> None:
             "an oversized video keeps its full-quality copy for YouTube"
         )
         assert full.endswith("big (HQ).mp4"), full
+        seen: list[bool] = []
+        run = render_module.subprocess.run
+
+        def watch(*args: object, **kwargs: object) -> object:
+            seen.append(os.path.exists(out))
+            return run(*args, **kwargs)  # pyright: ignore[reportCallIssue, reportArgumentType]
+
+        monkeypatch.setattr(render_module.subprocess, "run", watch)
+        render(song, os.path.join(song, "karaoke.ass"), "clip", out, 1e-6)
+        assert seen == [True, True], "a re-render keeps the old video in place until the new one is ready"
 
 
 def test_own_lyrics() -> None:
