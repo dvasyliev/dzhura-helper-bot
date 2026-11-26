@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0 (2026-11-26)
+
+### Features
+
+- parallel translation with its cost; one status message for voicing (b8ca8bd)
+
 ## 0.6.1 (2026-11-26)
 
 ### Other
