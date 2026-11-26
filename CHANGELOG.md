@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.0 (2026-11-26)
+
+### Features
+
+- voiced summaries, pinned contents and topic icons (ad612ca)
+
 ## 0.12.0 (2026-11-26)
 
 ### Features
