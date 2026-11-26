@@ -10,6 +10,7 @@ import {
   safeFilename,
   translationFolder,
 } from "../audiobook/text.ts";
+import { reportAi } from "../../ai-usage.ts";
 import { leftByPace, leftText } from "../../eta.ts";
 import { bold, code, escape, HTML, problem, quote } from "../../format.ts";
 import type { Book } from "../book/epub.ts";
@@ -131,7 +132,7 @@ async function run(ctx: Context, chatId: number, folder: string, source: Book) {
     translateMinutes(total - done),
   );
   const status = await ctx.api.sendMessage(chatId, shown, HTML);
-  const { book, epub, report, usage } = await translateBook(source, {
+  const { book, epub, report, usage, model } = await translateBook(source, {
     dir,
     cover: (await readInfo(folder))?.cover,
     onProgress: async (progress) => {
@@ -173,11 +174,14 @@ async function run(ctx: Context, chatId: number, folder: string, source: Book) {
       "uk-epub",
     );
   console.log(`Translated «${source.title}». ${usageLines(usage).join(", ")}`);
-  await notify(
-    ctx.api,
-    chatId,
-    `${reportText(report)}\n\n${quote(usageLines(usage))}`,
-  );
+  await notify(ctx.api, chatId, reportText(report));
+  // The whole book's usage, resumed runs included; the time is this run's.
+  await reportAi({
+    what: `🌐 Translation · ${name}`,
+    ...(model ? { model } : {}),
+    ms: Date.now() - started,
+    usage,
+  });
   const translated = await loadBook(translationFolder(folder));
   if (translated) await offer(ctx, translated, "uk");
 }

@@ -86,7 +86,7 @@ describe("deliver", () => {
     expect(api.sendDocument).not.toHaveBeenCalled();
   });
 
-  it("without a group sends the description with the missing level's button here", async () => {
+  it("without a group sends the description here, then a placeholder for each level not made", async () => {
     vi.mocked(syncSummaries).mockResolvedValueOnce(undefined);
     const api = fakeApi();
     await deliver(
@@ -96,23 +96,33 @@ describe("deliver", () => {
       "about",
       await described(),
     );
-    expect(api.sendMessage).toHaveBeenCalledWith(
-      5,
-      "📝 <b>Lecture</b>\nhttps://youtu.be/lecture0000\n\nПро що.",
-      expect.objectContaining({
-        parse_mode: "HTML",
-        reply_markup: expect.objectContaining({
-          inline_keyboard: [
-            [
-              {
-                text: "📖 Детально",
-                callback_data: "summary:detailed:lecture0000",
-              },
-            ],
-          ],
+    expect(api.sendMessage.mock.calls).toEqual([
+      [
+        5,
+        "📝 <b>Lecture</b>\nhttps://youtu.be/lecture0000\n\nПро що.",
+        expect.objectContaining({
+          link_preview_options: expect.objectContaining({
+            url: "https://i.ytimg.com/vi/lecture0000/maxresdefault.jpg",
+          }),
         }),
-      }),
-    );
+      ],
+      [
+        5,
+        "📖 <b>Detailed summary</b>",
+        expect.objectContaining({
+          reply_markup: expect.objectContaining({
+            inline_keyboard: [
+              [
+                {
+                  text: "Make it",
+                  callback_data: "summary:detailed:lecture0000",
+                },
+              ],
+            ],
+          }),
+        }),
+      ],
+    ]);
   });
 
   it("without a group sends a level's .md here", async () => {

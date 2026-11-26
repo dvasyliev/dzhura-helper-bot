@@ -10,6 +10,7 @@ import {
   contents,
   posted,
   postedA,
+  postedState,
   topicHarness,
 } from "./topic.testing.ts";
 
@@ -115,6 +116,23 @@ describe("syncTopic", () => {
       version: version(changed),
       fileId: "edited",
     });
+  });
+
+  it("reports how many messages are sent or edited of all, and links the topic", async () => {
+    const a = audio("a");
+    const state = postedState(a);
+    const progress = vi.fn();
+    const result = await sync(
+      state,
+      [audio("a", { mtime: 2 }), audio("b"), audio("c")],
+      { progress },
+    );
+    expect(progress.mock.calls).toEqual([
+      [1, 3],
+      [2, 3],
+      [3, 3],
+    ]);
+    expect(result.topic).toBe("https://t.me/c/1234567890/5");
   });
 
   it("uploads an audio again when only its title changed", async () => {
@@ -303,7 +321,7 @@ describe("syncTopic", () => {
     t.api.editForumTopic.mockRejectedValueOnce(
       apiError("Bad Request: TOPIC_NOT_MODIFIED"),
     );
-    const result = await sync(state, [a], true);
+    const result = await sync(state, [a], { probe: true });
 
     expect(t.api.editForumTopic).toHaveBeenCalledWith(CHAT, 3, {
       name: "Author — Title",
@@ -321,7 +339,7 @@ describe("syncTopic", () => {
       t.api.editForumTopic.mockRejectedValueOnce(
         apiError(`Bad Request: ${text}`),
       );
-      const result = await sync(state, [a], true);
+      const result = await sync(state, [a], { probe: true });
 
       expect(t.api.createForumTopic).toHaveBeenCalledWith(
         CHAT,

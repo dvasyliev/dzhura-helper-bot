@@ -2,6 +2,7 @@ import { Composer, InputFile, type Api, type Context } from "grammy";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { aiMeter, reportAi } from "../../ai-usage.ts";
 import { config } from "../../config.ts";
 import { bold, escape, HTML, problem } from "../../format.ts";
 import { busyHtml, startJob } from "../../jobs.ts";
@@ -11,11 +12,13 @@ import {
   ABOUT_MD,
   META_JSON,
   SUMMARY_DIR,
+  isMaking,
+  setMaking,
   summaryItems,
   syncSummaries,
 } from "../library/summary.ts";
-import { keyboard } from "../library/topic.ts";
-import { LimitError } from "../translate/claude.ts";
+import { textOptions } from "../library/topic.ts";
+import { LimitError, runClaude } from "../translate/claude.ts";
 import type { Feature } from "../types.ts";
 import {
   isMusic,
@@ -31,6 +34,13 @@ const STEPS: Record<Level, string> = {
   about: "Describing the video…",
   brief: "Writing the brief summary…",
   detailed: "Writing the detailed summary…",
+};
+
+/** How an operation is named in the AI usage history. */
+const OPERATIONS: Record<Level, string> = {
+  about: "📝 Video description",
+  brief: "📋 Brief summary",
+  detailed: "📖 Detailed summary",
 };
 
 function levelFile(dir: string, level: Level): string {
@@ -50,7 +60,9 @@ composer.callbackQuery(
   /^summary:(brief|detailed):([\w-]{11})$/,
   async (ctx) => {
     await ctx.answerCallbackQuery();
-    await begin(ctx.api, ctx.match[2]!, ctx.match[1] as Level);
+    // The button goes once the level is being made, so it cannot be pressed twice.
+    if (await begin(ctx.api, ctx.match[2]!, ctx.match[1] as Level))
+      await ctx.editMessageReplyMarkup().catch(() => {});
   },
 );
 
@@ -66,7 +78,9 @@ export const summary: Feature = {
     if (info && isMusic(info)) return;
     return {
       buttons: [{ text: "📝 Summary", data: `summary:${input.id}` }],
-      ask: (ctx) => begin(ctx.api, input.id, "about"),
+      ask: async (ctx) => {
+        await begin(ctx.api, input.id, "about");
+      },
     };
   },
 };
@@ -101,12 +115,28 @@ async function prepare(
   };
 }
 
-/** Writes `level` of video `id` in the background, unless it is written already; then delivers it. Progress goes to the owner's chat. */
-async function begin(api: Api, id: string, level: Level): Promise<void> {
+/** Shows level `key` as being made in the Summary topic, or no longer. */
+async function showMaking(api: Api, key: string, on: boolean): Promise<void> {
+  setMaking(key, on);
+  await syncSummaries(api).catch(console.error);
+}
+
+/**
+ * Writes `level` of video `id` in the background, unless it is written already or being written; then delivers it.
+ * Progress goes to the owner's chat. True when it started.
+ */
+async function begin(api: Api, id: string, level: Level): Promise<boolean> {
   const chatId = config.ownerId;
   const dir = path.join(SUMMARY_DIR, id);
-  if (existsSync(levelFile(dir, level))) return deliver(api, chatId, id, level);
+  const key = `${id}/${level}`;
+  if (existsSync(levelFile(dir, level))) {
+    await deliver(api, chatId, id, level);
+    return false;
+  }
+  if (isMaking(key)) return false;
   const work = async () => {
+    const meter = aiMeter();
+    if (level !== "about") await showMaking(api, key, true);
     const status = await api.sendMessage(
       chatId,
       `📝 ${bold("Getting the transcript…")}`,
@@ -116,10 +146,14 @@ async function begin(api: Api, id: string, level: Level): Promise<void> {
       api
         .editMessageText(chatId, status.message_id, `📝 ${bold(text)}`, HTML)
         .catch(() => {});
+    let title = id;
     try {
       const { info, transcript } = await prepare(id, dir, step);
       await step(STEPS[level]);
-      const reply = await writeLevel(level, info, transcript);
+      title = info.title;
+      const reply = await writeLevel(level, info, transcript, (prompt, input) =>
+        runClaude(prompt, input, meter.add),
+      );
       await writeFile(
         levelFile(dir, level),
         level === "about"
@@ -127,25 +161,31 @@ async function begin(api: Api, id: string, level: Level): Promise<void> {
           : levelMarkdown(info, id, level, reply),
       );
     } finally {
+      setMaking(key, false);
       await api.deleteMessage(chatId, status.message_id).catch(() => {});
     }
-    await deliver(api, chatId, id, level);
+    const link = await deliver(api, chatId, id, level);
+    await reportAi(meter.record(`${OPERATIONS[level]} · ${title}`, link));
   };
-  const failed = (error: unknown) =>
-    notify(
+  const failed = async (error: unknown) => {
+    // The placeholder gets its button back.
+    if (level !== "about") await showMaking(api, key, false);
+    await notify(
       api,
       chatId,
       error instanceof LimitError
         ? `⚠️ ${bold("Hit the Claude usage limit")}\nTry again after ${error.resetAt.toTimeString().slice(0, 5)}.`
         : `⚠️ ${bold("Summary failed")}\n${problem(error)}`,
     );
-  if (!startJob("video summary", work, failed))
-    await notify(api, chatId, busyHtml());
+  };
+  if (startJob("video summary", work, failed)) return true;
+  await notify(api, chatId, busyHtml());
+  return false;
 }
 
 /**
  * With a library group: `Done → <link>` to the level's message in the Summary topic. Without one the level itself
- * here: the description with its buttons, or the .md.
+ * here: the description and its placeholders, or the .md. Returns the level's link in the topic, if any.
  */
 export async function deliver(
   api: Api,
@@ -153,28 +193,32 @@ export async function deliver(
   id: string,
   level: Level,
   root = SUMMARY_DIR,
-): Promise<void> {
+): Promise<string | undefined> {
   const synced = await syncSummaries(api);
   if (synced) {
     const link = synced.link(`${id}/${level}`);
     if (link) await notify(api, chatId, `✅ ${bold("Done")} → ${escape(link)}`);
-    return;
+    return link;
   }
-  const item = (await summaryItems(root)).find(
-    (i) => i.key === `${id}/${level}`,
+  // The description comes with its levels' placeholders, as in the topic; a level is its .md.
+  const own = (await summaryItems(root)).filter((i) =>
+    level === "about"
+      ? i.key.startsWith(`${id}/`) && i.kind === "text"
+      : i.key === `${id}/${level}`,
   );
-  if (item?.kind === "text")
-    await api
-      .sendMessage(chatId, item.text, { ...HTML, reply_markup: keyboard(item) })
-      .catch(console.error);
-  else if (item)
-    await api
-      .sendDocument(chatId, new InputFile(item.file, item.name))
-      .catch((error) =>
-        notify(
-          api,
-          chatId,
-          `⚠️ ${bold("Couldn't send the summary")}\n${problem(error)}`,
-        ),
-      );
+  for (const item of own)
+    if (item.kind === "text")
+      await api
+        .sendMessage(chatId, item.text, textOptions(item))
+        .catch(console.error);
+    else
+      await api
+        .sendDocument(chatId, new InputFile(item.file, item.name))
+        .catch((error) =>
+          notify(
+            api,
+            chatId,
+            `⚠️ ${bold("Couldn't send the summary")}\n${problem(error)}`,
+          ),
+        );
 }

@@ -31,7 +31,21 @@ export const MAX_UPLOAD = 50 * 1024 * 1024;
 export type Synced = {
   changed: string[];
   link: (key: string) => string | undefined;
+  /** The topic's own link. */
+  topic?: string;
 };
+
+/** `probe`: see syncTopic. `progress`: told the messages sent or edited so far, of all to send or edit. */
+export type SyncOptions = {
+  probe?: boolean;
+  progress?: (done: number, total: number) => void;
+};
+
+/** A link to a forum topic. */
+function topicLink(chatId: number, threadId: number): string {
+  const id = String(chatId).replace(/^-100/, "");
+  return `https://t.me/c/${id}/${threadId}`;
+}
 
 /** A link to a message inside a forum topic. */
 export function messageLink(
@@ -39,8 +53,7 @@ export function messageLink(
   threadId: number,
   messageId: number,
 ): string {
-  const id = String(chatId).replace(/^-100/, "");
-  return `https://t.me/c/${id}/${threadId}/${messageId}`;
+  return `${topicLink(chatId, threadId)}/${messageId}`;
 }
 
 function apiError(error: unknown, text: string): boolean {
@@ -57,12 +70,29 @@ function topicGone(error: unknown): boolean {
 }
 
 /** The row of buttons under a text item, if any. */
-export function keyboard(item: TextItem): InlineKeyboard | undefined {
+function keyboard(item: TextItem): InlineKeyboard | undefined {
   return item.buttons?.length
     ? InlineKeyboard.from([
         item.buttons.map((b) => InlineKeyboard.text(b.text, b.data)),
       ])
     : undefined;
+}
+
+/** Send and edit options of a text item: HTML, its buttons and its preview. */
+export function textOptions(item: TextItem) {
+  return {
+    ...HTML,
+    reply_markup: keyboard(item),
+    ...(item.preview
+      ? {
+          link_preview_options: {
+            url: item.preview,
+            prefer_large_media: true,
+            show_above_text: true,
+          },
+        }
+      : {}),
+  };
 }
 
 function mediaOptions(item: FileItem) {
@@ -120,7 +150,7 @@ export async function syncTopic(
   name: string,
   items: Item[],
   file = LIBRARY_FILE,
-  { probe = false }: { probe?: boolean } = {},
+  { probe = false, progress }: SyncOptions = {},
 ): Promise<Synced> {
   const chatId = state.chatId;
   if (chatId === undefined) throw new Error("The library group is not set");
@@ -181,10 +211,12 @@ export async function syncTopic(
   const editOne = async (item: Item, old: Posted): Promise<void> => {
     let fileId: string | undefined;
     if (item.kind === "text" && old.kind === "text") {
-      await api.editMessageText(chatId, old.messageId, item.text, {
-        ...HTML,
-        reply_markup: keyboard(item),
-      });
+      await api.editMessageText(
+        chatId,
+        old.messageId,
+        item.text,
+        textOptions(item),
+      );
     } else if (item.kind === "text") {
       await api.editMessageCaption(chatId, old.messageId, {
         ...HTML,
@@ -214,6 +246,10 @@ export async function syncTopic(
     else delete old.fileId;
   };
 
+  let done = 0;
+  let total = reconciled.edit.length + wanted.length - reconciled.cut;
+  const step = () => progress?.(++done, total);
+
   for (const i of reconciled.edit) {
     const item = wanted[i]!;
     const old = topic.messages[i]!;
@@ -223,10 +259,12 @@ export async function syncTopic(
     } catch (error) {
       if (!apiError(error, "message is not modified")) {
         cut = i;
+        total = done + wanted.length - cut;
         break;
       }
       old.version = version(item);
     }
+    step();
     await save();
   }
 
@@ -241,9 +279,8 @@ export async function syncTopic(
     const thread = { message_thread_id: topic.threadId };
     if (item.kind === "text") {
       const sent = await api.sendMessage(chatId, item.text, {
-        ...HTML,
+        ...textOptions(item),
         ...thread,
-        reply_markup: keyboard(item),
       });
       if (item.pin)
         await api.pinChatMessage(chatId, sent.message_id, {
@@ -287,6 +324,7 @@ export async function syncTopic(
   const sendFrom = async (start: number): Promise<void> => {
     for (const item of wanted.slice(start)) {
       const message = await sendOne(item);
+      step();
       topic.messages.push(message);
       changed.push(message.key);
       await save();
@@ -299,12 +337,14 @@ export async function syncTopic(
     if (!topicGone(error)) throw error;
     lost.push(...topic.messages);
     topic = await createTopic();
+    total = done + wanted.length;
     await sendFrom(0);
   }
 
   return {
     // A recreated topic sends again keys already sent before it was lost.
     changed: [...new Set(changed)],
+    topic: topicLink(chatId, topic.threadId),
     link: (wantedKey) => {
       const message = topic.messages.find((m) => m.key === wantedKey);
       return message && messageLink(chatId, topic.threadId, message.messageId);

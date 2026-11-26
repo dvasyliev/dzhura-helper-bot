@@ -2,10 +2,12 @@ import { Composer, type Api, type Context, type NextFunction } from "grammy";
 import type { Chat, ChatMember } from "grammy/types";
 import { config } from "../../config.ts";
 import { busyHtml, startJob } from "../../jobs.ts";
-import { bold, escape, HTML, problem, quote } from "../../format.ts";
+import { bold, escape, HTML, problem } from "../../format.ts";
 import { loadBook } from "../audiobook/library.ts";
 import { bookInfo } from "../book/info.ts";
-import { bookFolders, syncBook } from "./books.ts";
+import { bookFolders, syncBook, topicName } from "./books.ts";
+import { liveStatus, publishStatus, type Row } from "./progress.ts";
+import type { Synced } from "./topic.ts";
 import { resetUnavailable } from "./group.ts";
 import { syncKaraoke } from "./karaoke.ts";
 import { syncSummaries } from "./summary.ts";
@@ -47,36 +49,61 @@ export async function privateOnly(
   await next();
 }
 
-const STOPPED = `⚠️ ${bold("Publishing stopped")}\nThe library group is unavailable.`;
-
 /** setTimeout's longest wait: the info is waited for to the end. */
 const NO_LIMIT = 2 ** 31 - 1;
 
+/** Syncs one topic, telling `progress` how far it got; undefined when the group is unavailable. */
+type Step = (
+  progress: (done: number, total: number) => void,
+) => Promise<Synced | undefined>;
+
 /**
- * First makes each book's missing info (cover, year, description; see bookInfo), so its topic shows the cover; then
- * syncs every topic, checking each still exists, and replies how it went.
+ * Syncs every topic, checking each still exists; a book's missing info (cover, year, description; see bookInfo) is
+ * made first, so its topic shows the cover. `show` gets the status (see publishStatus) as it changes, the last one
+ * `final`.
  */
 export async function publish(
   api: Api,
-  reply: (text: string) => Promise<unknown>,
+  show: (text: string, final?: boolean) => Promise<void>,
 ): Promise<void> {
   const folders = await bookFolders();
-  for (const folder of folders) {
-    const book = await loadBook(folder).catch(() => undefined);
-    if (book) await bookInfo(folder, book, { waitMs: NO_LIMIT });
-  }
-  const synced = async (): Promise<boolean> => {
-    for (const folder of folders)
-      if (!(await syncBook(api, folder, undefined, { probe: true })))
-        return false;
-    if (!(await syncKaraoke(api, undefined, { probe: true }))) return false;
-    return (await syncSummaries(api, undefined, { probe: true })) !== undefined;
-  };
-  await reply(
-    (await synced())
-      ? `✅ ${bold("Library is up to date")}\n\n${quote([`${folders.length + 2} topics`])}`
-      : STOPPED,
+  const books = await Promise.all(
+    folders.map((folder) => loadBook(folder).catch(() => undefined)),
   );
+  const rows: Row[] = [
+    ...folders.map((folder, i): Row => {
+      const book = books[i];
+      return { name: book ? topicName(book) : folder, state: "waiting" };
+    }),
+    { name: "Karaoke", state: "waiting" },
+    { name: "Summaries", state: "waiting" },
+  ];
+  const steps: Step[] = [
+    ...folders.map((folder, i): Step => async (progress) => {
+      const book = books[i];
+      if (book) await bookInfo(folder, book, { waitMs: NO_LIMIT });
+      return syncBook(api, folder, undefined, { probe: true, progress });
+    }),
+    (progress) => syncKaraoke(api, undefined, { probe: true, progress }),
+    (progress) => syncSummaries(api, undefined, { probe: true, progress }),
+  ];
+  await show(publishStatus(rows));
+  for (const [i, step] of steps.entries()) {
+    const row = rows[i]!;
+    row.state = "running";
+    await show(publishStatus(rows));
+    const synced = await step((done, total) => {
+      row.sent = [done, total];
+      void show(publishStatus(rows));
+    });
+    if (!synced) return show(publishStatus(rows, "stopped"), true);
+    Object.assign(row, {
+      state: "done",
+      changed: synced.changed.length,
+      link: synced.topic,
+    });
+  }
+  await show(publishStatus(rows, "done"), true);
 }
 
 export const library = new Composer<Context>();
@@ -128,7 +155,15 @@ library.command("publish", async (ctx) => {
     );
   const started = startJob(
     "publishing the library",
-    () => publish(ctx.api, (text) => ctx.reply(text, HTML)),
+    () =>
+      publish(
+        ctx.api,
+        liveStatus(
+          async (text) => (await ctx.reply(text, HTML)).message_id,
+          (messageId, text) =>
+            ctx.api.editMessageText(ctx.chat.id, messageId, text, HTML),
+        ),
+      ),
     async (error) => {
       await ctx.reply(
         `⚠️ ${bold("Publishing failed")}\n${problem(error)}`,

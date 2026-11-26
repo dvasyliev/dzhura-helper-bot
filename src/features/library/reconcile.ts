@@ -25,6 +25,8 @@ export type TextItem = {
   text: string;
   /** One row of buttons under the text. */
   buttons?: { text: string; data: string }[];
+  /** A picture's URL, shown large above the text as its link preview. */
+  preview?: string;
   pin?: boolean;
 };
 
@@ -44,7 +46,7 @@ export type Posted = {
 /** A string that changes when the message content must be edited. */
 export function version(item: Item): string {
   if (item.kind === "text")
-    return `${item.text}\n${item.buttons?.map((b) => b.data).join(" ") ?? ""}`;
+    return `${item.text}\n${item.buttons?.map((b) => b.data).join(" ") ?? ""}${item.preview ? `\n${item.preview}` : ""}`;
   return `${fileVersion(item)}${item.caption ?? ""}`;
 }
 

@@ -28,7 +28,7 @@ import {
   paragraphFixInput,
   problemParagraphs,
 } from "./fix.ts";
-import { LimitError, runClaude, type Usage } from "./claude.ts";
+import { LimitError, runClaude, USAGE, type Usage } from "./claude.ts";
 import { LANGUAGE, langFile, termMatch, type TermMatch } from "./lang.ts";
 import {
   buildGlossary,
@@ -92,15 +92,6 @@ type Options = {
 /** A chunk whose first translation had problems: what was found and what is left after the fix calls. */
 type ReportEntry = { chunk: string; found: Problem[]; left: Problem[] };
 
-const USAGE = z.object({
-  calls: z.number(),
-  input: z.number(),
-  output: z.number(),
-  cacheWrite: z.number(),
-  cacheRead: z.number(),
-  costUsd: z.number(),
-});
-
 const REPORT = z.array(
   z.object({
     chunk: z.string(),
@@ -151,6 +142,8 @@ export async function translateBook(
   epub?: string;
   report: { fixed: number; problems: number; unchecked: number };
   usage: Usage;
+  /** The model that translated, as Claude names it. */
+  model?: string;
 }> {
   const {
     dir,
@@ -175,7 +168,9 @@ export async function translateBook(
         costUsd: 0,
       };
   let savingUsage = Promise.resolve();
-  const addUsage = (one: Usage) => {
+  let model: string | undefined;
+  const addUsage = (one: Usage, used?: string) => {
+    model = used ?? model;
     for (const key of Object.keys(usage) as (keyof Usage)[])
       usage[key] += one[key];
     savingUsage = savingUsage.then(() =>
@@ -404,6 +399,7 @@ export async function translateBook(
     book: result,
     epub,
     usage,
+    ...(model ? { model } : {}),
     report: {
       fixed: report.filter((r) => !r.left.length).length,
       problems: report.filter((r) => r.left.length && !unchecked(r)).length,

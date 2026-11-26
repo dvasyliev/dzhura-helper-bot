@@ -8,7 +8,7 @@ import { uploads } from "../karaoke/youtube.ts";
 import { withGroup } from "./group.ts";
 import type { Item } from "./reconcile.ts";
 import { LIBRARY_FILE } from "./state.ts";
-import { syncTopic, type Synced } from "./topic.ts";
+import { syncTopic, type Synced, type SyncOptions } from "./topic.ts";
 
 const KARAOKE_TOPIC = "karaoke";
 const TOPIC_NAME = "🎤 Karaoke";
@@ -147,7 +147,7 @@ export function karaokeItems(
 export async function syncKaraoke(
   api: Api,
   dirs: Dirs = DIRS,
-  options: { probe?: boolean } = {},
+  options: SyncOptions = {},
 ): Promise<Synced | undefined> {
   return withGroup(
     api,

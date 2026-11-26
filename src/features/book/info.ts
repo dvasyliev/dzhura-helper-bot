@@ -2,6 +2,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { aiMeter, reportAi } from "../../ai-usage.ts";
 import { loadBook } from "../audiobook/library.ts";
 import { BOOKS_DIR, originalFolder } from "../audiobook/text.ts";
 import { runClaude } from "../translate/claude.ts";
@@ -104,7 +105,10 @@ async function describe(book: Book, run: Run): Promise<string | undefined> {
     .join("\n\n")
     .slice(0, SAMPLE_CHARS);
   const input = `Title: ${book.title}\nAuthor: ${book.author ?? "unknown"}\n\n${text}`;
-  return (await run(DESCRIPTION_PROMPT, input)).trim() || undefined;
+  const meter = aiMeter();
+  const reply = await run(DESCRIPTION_PROMPT, input, meter.add);
+  await reportAi(meter.record(`📚 Book description · ${book.title}`));
+  return reply.trim() || undefined;
 }
 
 /** Writes the cover next to info.json; returns its file name. */

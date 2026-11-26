@@ -302,7 +302,7 @@ To share the library, invite people to the group. To keep it tidy, turn off **Se
 caffeinate -i npm start
 ```
 
-`caffeinate` keeps the Mac awake while the bot runs. Stop it with `Ctrl+C`.
+`caffeinate` keeps the Mac awake while the bot runs. Stop it with `Ctrl+C`. `npm start` first stops a bot already running from this folder, so it also restarts the bot.
 
 Check in Telegram:
 1. `/start` shows the feature menu.

@@ -104,7 +104,7 @@ Results go to a Telegram group instead of the private chat. The private chat sta
 
 The group is a forum (Topics on) that only the bot writes in. It mirrors `data/`: after each job the bot compares the files on disk with the messages it posted and makes the topic match.
 
-- `/publish` first makes the info (cover, year, pages, description) of every book that has none yet, as its card would, then syncs.
+- `/publish` goes topic by topic: for a book it first makes the info (cover, year, pages, description) if it has none yet, as its card would, then syncs. One status message, edited at most every 3 s, shows a line per topic (`⏳` waiting, `🔄 34 of 90` messages sent or edited, `✅ 23 updated` or `no changes`, linked to the topic) and ends as `Library is up to date` or `Publishing stopped` ([progress.ts](../src/features/library/progress.ts)).
 - **One topic per book**, named `Author — Title`, with a pinned contents message (the book's cover with the same card as in the chat: language, chapters, year, pages, a short description, how many chapters are voiced in which voice, whether a translation exists), the original file, the Ukrainian EPUB if translated, then for each voice a `🎧 <voice>` header and its tracks, each its own message with its caption, a book part's message before its first track. While a book is voiced, each chapter is posted once it is voiced. A translated book stays in its original's topic.
 - **One topic `🎤 Karaoke`**, two messages per song: Karaoke and Vocals. A version not made yet is a text placeholder with a "🎤 Make it" button; when the video is ready it replaces the placeholder in the same place. A version uploaded to YouTube is its link.
 - **Changes** (a re-voiced chapter, a new translation) replace the file in its message. If a chapter is missing in the middle, the messages from there are deleted and sent again (files already in Telegram are re-sent by `file_id`, not uploaded twice).
@@ -116,6 +116,10 @@ The group is a forum (Topics on) that only the bot writes in. It mirrors `data/`
 Setup: [SETUP.md, step 6](../SETUP.md#6-library-group-optional).
 
 Tests: `npx vitest run src/features/library`.
+
+## AI usage
+
+Every Claude operation (a book's description, a translation, a video's description or summary) leaves a message in the owner's chat: what was made, a link to it, tokens in and out with the price at API prices (what it would cost without the subscription), the model and the time it took ([ai-usage.ts](../src/ai-usage.ts)). A pinned message totals the month and is edited after each operation; a new month gets a new one. The history is in `data/ai-usage.json`.
 
 ## Sample
 

@@ -21,18 +21,23 @@ const OUTPUT = z.object({
       cache_read_input_tokens: z.number().optional(),
     })
     .optional(),
+  /** Tokens per model; the one that wrote the most is the reply's model. */
+  modelUsage: z
+    .record(z.string(), z.object({ outputTokens: z.number().optional() }))
+    .optional(),
 });
 type Output = z.infer<typeof OUTPUT>;
 
 /** Tokens and cost of Claude calls; `costUsd` is at API prices, which a subscription does not charge. */
-export type Usage = {
-  calls: number;
-  input: number;
-  output: number;
-  cacheWrite: number;
-  cacheRead: number;
-  costUsd: number;
-};
+export const USAGE = z.object({
+  calls: z.number(),
+  input: z.number(),
+  output: z.number(),
+  cacheWrite: z.number(),
+  cacheRead: z.number(),
+  costUsd: z.number(),
+});
+export type Usage = z.infer<typeof USAGE>;
 
 /** The usage of one reply. */
 export function usageOf(output: Output): Usage {
@@ -45,6 +50,13 @@ export function usageOf(output: Output): Usage {
     cacheRead: u?.cache_read_input_tokens ?? 0,
     costUsd: output.total_cost_usd ?? 0,
   };
+}
+
+/** The model that wrote most of a reply, e.g. «claude-sonnet-4-5-20250929». */
+export function modelOf(output: Output): string | undefined {
+  const models = Object.entries(output.modelUsage ?? {});
+  models.sort(([, a], [, b]) => (b.outputTokens ?? 0) - (a.outputTokens ?? 0));
+  return models[0]?.[0];
 }
 
 const LIMIT = /usage limit|hit your limit|limit reached/i;
@@ -68,11 +80,11 @@ export function limitReset(output: Output, now: Date): Date | undefined {
   return new Date(now.getTime() + FALLBACK_WAIT_MS);
 }
 
-/** Runs `claude -p` with a system prompt file and `input` on stdin; returns the reply text and hands its usage to `onUsage`; `model` defaults to sonnet. */
+/** Runs `claude -p` with a system prompt file and `input` on stdin; returns the reply text and hands its usage and model to `onUsage`; `model` defaults to sonnet. */
 export function runClaude(
   promptFile: string,
   input: string,
-  onUsage?: (usage: Usage) => void,
+  onUsage?: (usage: Usage, model?: string) => void,
   { model = "sonnet" }: { model?: string } = {},
 ): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -116,7 +128,7 @@ export function runClaude(
         );
         return;
       }
-      onUsage?.(usageOf(output));
+      onUsage?.(usageOf(output), modelOf(output));
       const reset = limitReset(output, new Date());
       if (reset) reject(new LimitError(reset));
       else if (output.is_error)

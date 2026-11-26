@@ -27,7 +27,7 @@ import { SOURCE_MD } from "../translate/pipeline.ts";
 import { withGroup } from "./group.ts";
 import type { FileItem, Item } from "./reconcile.ts";
 import { LIBRARY_FILE } from "./state.ts";
-import { syncTopic, type Synced } from "./topic.ts";
+import { syncTopic, type Synced, type SyncOptions } from "./topic.ts";
 
 /** Where the books and the library state live; tests point them at a temp dir. */
 type Dirs = { books: string; state: string };
@@ -265,7 +265,7 @@ export async function syncBook(
   api: Api,
   folder: string,
   dirs: Dirs = DIRS,
-  options: { probe?: boolean } = {},
+  options: SyncOptions = {},
 ): Promise<Synced | undefined> {
   const original = originalFolder(folder);
   return withGroup(

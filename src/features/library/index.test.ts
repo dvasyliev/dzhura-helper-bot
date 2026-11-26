@@ -21,7 +21,11 @@ import { syncSummaries } from "./summary.ts";
 import type { Synced } from "./topic.ts";
 
 vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
-vi.mock("./books.ts", () => ({ bookFolders: vi.fn(), syncBook: vi.fn() }));
+vi.mock("./books.ts", () => ({
+  bookFolders: vi.fn(),
+  syncBook: vi.fn(),
+  topicName: (book: { title: string }) => book.title,
+}));
 vi.mock("./karaoke.ts", () => ({ syncKaraoke: vi.fn() }));
 vi.mock("./summary.ts", () => ({ syncSummaries: vi.fn() }));
 vi.mock("../audiobook/library.ts", () => ({
@@ -98,11 +102,19 @@ describe("publish", () => {
     vi.mocked(syncBook)
       .mockResolvedValueOnce(done)
       .mockResolvedValueOnce(undefined);
-    const reply = vi.fn(async () => undefined);
-    await publish(api, reply);
+    const show = vi.fn(async () => undefined);
+    await publish(api, show);
     expect(syncKaraoke).not.toHaveBeenCalled();
-    expect(reply).toHaveBeenCalledWith(
-      "⚠️ <b>Publishing stopped</b>\nThe library group is unavailable.",
+    expect(show).toHaveBeenLastCalledWith(
+      [
+        "⚠️ <b>Publishing stopped</b> · the library group is unavailable",
+        "",
+        "✅ no changes | A",
+        "🔄 B",
+        "⏳ Karaoke",
+        "⏳ Summaries",
+      ].join("\n"),
+      true,
     );
   });
 
@@ -111,17 +123,35 @@ describe("publish", () => {
     vi.mocked(syncBook).mockResolvedValue(done);
     vi.mocked(syncKaraoke).mockResolvedValue(done);
     vi.mocked(syncSummaries).mockResolvedValue(done);
-    const reply = vi.fn(async () => undefined);
-    await publish(api, reply);
-    expect(syncBook).toHaveBeenCalledWith(api, "A", undefined, {
-      probe: true,
-    });
-    expect(syncKaraoke).toHaveBeenCalledWith(api, undefined, { probe: true });
-    expect(syncSummaries).toHaveBeenCalledWith(api, undefined, {
-      probe: true,
-    });
-    expect(reply).toHaveBeenCalledWith(
-      "✅ <b>Library is up to date</b>\n\n<blockquote>3 topics</blockquote>",
+    const show = vi.fn(async () => undefined);
+    await publish(api, show);
+    const probe = { probe: true, progress: expect.any(Function) };
+    expect(syncBook).toHaveBeenCalledWith(api, "A", undefined, probe);
+    expect(syncKaraoke).toHaveBeenCalledWith(api, undefined, probe);
+    expect(syncSummaries).toHaveBeenCalledWith(api, undefined, probe);
+    expect(show).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^✅ <b>Library is up to date<\/b> · 3 topics\n/),
+      true,
+    );
+  });
+
+  it("shows each topic's progress while it syncs, and its name", async () => {
+    vi.mocked(bookFolders).mockResolvedValue(["A"]);
+    vi.mocked(loadBook).mockResolvedValue({ title: "Book A" } as never);
+    vi.mocked(syncBook).mockImplementation(
+      async (_api, _folder, _dirs, options) => {
+        options?.progress?.(1, 2);
+        return { ...done, changed: ["x", "y"], topic: "https://t.me/c/1/5" };
+      },
+    );
+    vi.mocked(syncKaraoke).mockResolvedValue(done);
+    vi.mocked(syncSummaries).mockResolvedValue(done);
+    const show = vi.fn(async () => undefined);
+    await publish(api, show);
+    const texts = show.mock.calls.map((c) => (c as unknown as [string])[0]);
+    expect(texts).toContainEqual(expect.stringContaining("🔄 1 of 2 | Book A"));
+    expect(texts.at(-1)).toContain(
+      '✅ 2 updated | <a href="https://t.me/c/1/5">Book A</a>',
     );
   });
 

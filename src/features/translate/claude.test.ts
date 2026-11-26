@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { limitReset, usageOf } from "./claude.ts";
+import { limitReset, modelOf, usageOf } from "./claude.ts";
 
 const now = new Date(2026, 10, 25, 10, 0, 0);
 const MIN30 = 30 * 60 * 1000;
@@ -81,5 +81,19 @@ describe("usageOf", () => {
       cacheRead: 0,
       costUsd: 0,
     });
+  });
+});
+
+describe("modelOf", () => {
+  it("is the model that wrote the most", () => {
+    expect(
+      modelOf({
+        modelUsage: {
+          "claude-haiku-4-5": { outputTokens: 20 },
+          "claude-sonnet-4-5-20250929": { outputTokens: 900 },
+        },
+      }),
+    ).toBe("claude-sonnet-4-5-20250929");
+    expect(modelOf({})).toBeUndefined();
   });
 });
