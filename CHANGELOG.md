@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0 (2026-11-26)
+
+### Features
+
+- parts list their chapter titles; book cover as album art (01eb3b2)
+
 ## 0.9.1 (2026-11-26)
 
 ### Fixes
