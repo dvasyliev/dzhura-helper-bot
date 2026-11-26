@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0 (2026-11-26)
+
+### Features
+
+- time left in progress, one folder per book, audio albums and book cards (f5084a2)
+
 ## 0.7.0 (2026-11-26)
 
 ### Features
