@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0 (2026-11-26)
+
+### Features
+
+- live publish progress, restart on npm start, AI usage history (5821580)
+
 ## 0.11.0 (2026-11-26)
 
 ### Features
