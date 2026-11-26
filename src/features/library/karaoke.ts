@@ -137,7 +137,7 @@ export function karaokeItems(
         key,
         kind: "text",
         text: `⏳ ${bold(escape(title))} — not made yet`,
-        button: makeButton(song.id, version),
+        buttons: [makeButton(song.id, version)],
       };
     }),
   );

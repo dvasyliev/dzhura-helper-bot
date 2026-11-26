@@ -37,7 +37,32 @@ vi.mock("./pipeline.ts", () => ({
   runKaraoke: vi.fn(async function* () {}),
 }));
 
+vi.mock("../video/info.ts", async (original) => ({
+  ...(await original<typeof import("../video/info.ts")>()),
+  videoInfo: vi.fn(async (id: string) =>
+    id === "lecture0000"
+      ? { title: "L", categories: ["Education"], chapters: [] }
+      : id === "unknown0000"
+        ? undefined
+        : { title: "S", categories: ["Music"], chapters: [] },
+  ),
+}));
+
 describe("karaoke.actions", () => {
+  it("offers nothing for a YouTube video that is not music", async () => {
+    expect(
+      await karaoke.actions?.({ kind: "youtube", id: "lecture0000" }),
+    ).toBeUndefined();
+  });
+
+  it("still offers karaoke when the video's category is unknown", async () => {
+    const actions = await karaoke.actions?.({
+      kind: "youtube",
+      id: "unknown0000",
+    });
+    expect(actions?.buttons).toHaveLength(1);
+  });
+
   it("offers karaoke for a YouTube video, with the version as its question", async () => {
     const actions = await karaoke.actions?.({
       kind: "youtube",

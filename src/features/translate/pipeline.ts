@@ -1,10 +1,10 @@
-import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { bookLanguage } from "../audiobook/text.ts";
 import type { Book } from "../book/epub.ts";
 import { BOOK_MD, parseMarkdown, toMarkdown } from "../book/markdown.ts";
+import { buildEpub } from "../book/pandoc.ts";
 import {
   checkChunk,
   hasTerm,
@@ -113,39 +113,9 @@ function sleepFor(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Builds the EPUB with pandoc; false when pandoc is not installed. */
+/** Builds the Ukrainian EPUB with pandoc; false when pandoc is not installed. */
 function runPandoc(md: string, epub: string, cover?: string): Promise<boolean> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      "pandoc",
-      [
-        md,
-        "-o",
-        epub,
-        "--metadata",
-        `lang=${LANGUAGE}`,
-        ...(cover ? [`--epub-cover-image=${cover}`] : []),
-      ],
-      {
-        stdio: ["ignore", "ignore", "pipe"],
-      },
-    );
-    let stderr = "";
-    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
-    child.on("error", (error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") resolve(false);
-      else reject(error);
-    });
-    child.on("close", (code, signal) => {
-      if (code === 0) resolve(true);
-      else
-        reject(
-          new Error(
-            `pandoc exited with ${code ?? signal}: ${stderr.slice(0, 500)}`,
-          ),
-        );
-    });
-  });
+  return buildEpub(md, epub, { lang: LANGUAGE, cover });
 }
 
 async function readIfExists(file: string): Promise<string | undefined> {

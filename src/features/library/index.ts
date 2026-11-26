@@ -8,6 +8,7 @@ import { bookInfo } from "../book/info.ts";
 import { bookFolders, syncBook } from "./books.ts";
 import { resetUnavailable } from "./group.ts";
 import { syncKaraoke } from "./karaoke.ts";
+import { syncSummaries } from "./summary.ts";
 import {
   LIBRARY_FILE,
   loadState,
@@ -68,11 +69,12 @@ export async function publish(
     for (const folder of folders)
       if (!(await syncBook(api, folder, undefined, { probe: true })))
         return false;
-    return (await syncKaraoke(api, undefined, { probe: true })) !== undefined;
+    if (!(await syncKaraoke(api, undefined, { probe: true }))) return false;
+    return (await syncSummaries(api, undefined, { probe: true })) !== undefined;
   };
   await reply(
     (await synced())
-      ? `✅ ${bold("Library is up to date")}\n\n${quote([`${folders.length + 1} topics`])}`
+      ? `✅ ${bold("Library is up to date")}\n\n${quote([`${folders.length + 2} topics`])}`
       : STOPPED,
   );
 }

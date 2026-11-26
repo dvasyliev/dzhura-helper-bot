@@ -13,6 +13,7 @@ describe("menuCommands", () => {
       "audiobook",
       "regen",
       "translate",
+      "epub",
       "karaoke",
       "summary",
       "publish",

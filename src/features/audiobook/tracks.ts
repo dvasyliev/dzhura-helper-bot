@@ -4,10 +4,8 @@ export const TRACK_CHARS = 7500;
 /** About 2 minutes: a shorter chapter joins the track before it. */
 export const MIN_TRACK_CHARS = 1500;
 
-/** About an hour of audio (≈770 characters a minute). */
-export const PART_CHARS = 46_000;
-/** Telegram's album limit: a part is one album. */
-const PART_TRACKS = 10;
+/** HolosTTS reads about this many characters a minute. */
+export const CHARS_PER_MINUTE = 770;
 
 type Section = { title: string; text: string; level?: number };
 
@@ -112,28 +110,23 @@ function withTitle(chapter: Section): string {
     : `${chapter.title}\n${chapter.text}`;
 }
 
+/** «Частина друга», «PART II», «Книга третя» alone on a line: the start of one of the book's own parts. */
+const BOOK_PART = new RegExp(
+  `^(part|book|частина|книга)\\s+(${NUMBER})$`,
+  "iu",
+);
+
 /**
- * Groups consecutive tracks into parts of about an hour: a part stays within PART_CHARS and PART_TRACKS tracks; a
- * longer track is a part of its own.
+ * The book's own part each track is in («Частина друга», «PART II», «Книга третя»): a part starts at a track whose
+ * first line is its heading, and lasts until the next; undefined before the first, or in a book without parts.
  */
-export function groupParts<T extends { text: string }>(tracks: T[]): T[][] {
-  const parts: T[][] = [];
-  let chars = 0;
-  for (const track of tracks) {
-    const last = parts.at(-1);
-    if (
-      last &&
-      last.length < PART_TRACKS &&
-      chars + track.text.length <= PART_CHARS
-    ) {
-      last.push(track);
-      chars += track.text.length;
-    } else {
-      parts.push([track]);
-      chars = track.text.length;
-    }
-  }
-  return parts;
+export function bookParts(tracks: { text: string }[]): (string | undefined)[] {
+  let part: string | undefined;
+  return tracks.map((track) => {
+    const first = track.text.split("\n", 1)[0]!.trim();
+    if (BOOK_PART.test(first)) part = first;
+    return part;
+  });
 }
 
 function startsWithTitle({ title, text }: Section): boolean {

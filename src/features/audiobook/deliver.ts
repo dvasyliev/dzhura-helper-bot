@@ -1,8 +1,8 @@
-import { InputFile, InputMediaBuilder, type Api } from "grammy";
+import { InputFile, type Api } from "grammy";
 import path from "node:path";
 import type { Book } from "../book/epub.ts";
 import { syncBook } from "../library/books.ts";
-import { albumAt, type Synced } from "../library/topic.ts";
+import type { Synced } from "../library/topic.ts";
 import {
   chapters as bookChapters,
   type Chapter,
@@ -10,13 +10,13 @@ import {
 } from "./library.ts";
 import { leftByPace, leftText } from "../../eta.ts";
 import { HTML, bold, code, escape, problem } from "../../format.ts";
-import { partMessage, partsOf, audioTitle, type Part } from "./parts.ts";
+import { audioCaption, audioTitle, bookPartMessage } from "./captions.ts";
+import { bookParts } from "./tracks.ts";
 import { bookPaths, voicingMinutes } from "./text.ts";
 import { voiceChapters, type Voice } from "./voice.ts";
 
 /**
- * Voices `todo` in reading order. The first chapter goes out at once, so listening can start; then each part (about an hour, one album) once all its
- * chapters of this run are voiced, and the rest at the end, also after a failure. With a library group "going out" syncs the
+ * Voices `todo` in reading order; each chapter goes out once it is voiced, so listening can start. With a library group "going out" syncs the
  * book's topic and the owner gets `Done → <link>` once; without one the files are sent here. A failed chapter stops
  * the book. With `progress` (chapters done before and in all) one status message counts the chapters as they finish.
  */
@@ -40,21 +40,11 @@ export async function voiceBook(
   };
   /** Voiced and not sent yet. */
   const waiting: { chapter: Chapter; files: string[] }[] = [];
-  const parts = partsOf(bookChapters(book));
-  const partOf = (chapter: Chapter) =>
-    parts.find((p) => p.tracks.some((t) => t.index === chapter.index))!;
-  /** The last chapter of each part in this run: its part goes out after it. */
-  const lastInPart = new Set(
-    parts.flatMap((p) => {
-      const last = p.tracks.filter((t) =>
-        todo.some((c) => c.index === t.index),
-      );
-      return last.length ? [last.at(-1)!.index] : [];
-    }),
-  );
-  /** Parts whose message is already in the private chat. */
-  const announced = new Set<number>();
-  let sentAny = false;
+  /** The book's own part of each track, by its index. */
+  const tracks = bookChapters(book);
+  const parts = bookParts(tracks);
+  /** The part whose message the private chat showed last. */
+  let shownPart: string | undefined;
   let linked = false;
   const status =
     progress &&
@@ -62,10 +52,27 @@ export async function voiceBook(
   const send = async () => {
     const batch = waiting.splice(0);
     if (!batch.length) return;
-    sentAny = true;
     const synced = await syncBook(api, folder);
     if (!synced)
-      await sendParts(api, chatId, batch, partOf, announced, paths.audioDir);
+      for (const { chapter, files } of batch) {
+        const part = parts[chapter.index];
+        if (part && part !== shownPart) {
+          shownPart = part;
+          await notify(
+            api,
+            chatId,
+            bookPartMessage(
+              part,
+              tracks.filter((_, i) => parts[i] === part),
+            ),
+          );
+        }
+        for (const file of files)
+          await sendAudio(api, chatId, chapter, file, {
+            files: files.length,
+            audioDir: paths.audioDir,
+          });
+      }
     else if (!linked) linked = await sendDone(api, chatId, synced);
   };
   try {
@@ -86,7 +93,10 @@ export async function voiceBook(
         throw new Error(`chapter «${chapter.name}»: ${event.error}`);
       await status?.next(chapter.text.length);
       waiting.push({ chapter, files: event.files ?? [] });
-      if (!sentAny || lastInPart.has(chapter.index)) await send();
+      // A failed send does not stop the voicing: the next one syncs what this one missed, the last one says why.
+      await send().catch((error: unknown) =>
+        console.error("Sending a voiced chapter:", error),
+      );
     }
   } catch (error) {
     // The chapter's error is the one to report; a failed send after it must not replace it.
@@ -155,70 +165,31 @@ async function sendDone(
   return true;
 }
 
-/**
- * Sends the voiced chapters here, part by part: the part's message once (the first time one of its chapters goes
- * out), then its audio as albums of up to MAX_ALBUM, a lone file as plain audio. Titled «001. Chapter», no book name,
- * and without a caption.
- */
-async function sendParts(
-  api: Api,
-  chatId: number,
-  batch: { chapter: Chapter; files: string[] }[],
-  partOf: (chapter: Chapter) => Part,
-  announced: Set<number>,
-  audioDir: string,
-): Promise<void> {
-  const groups = new Map<Part, typeof batch>();
-  for (const item of batch) {
-    const part = partOf(item.chapter);
-    groups.set(part, [...(groups.get(part) ?? []), item]);
-  }
-  for (const [part, items] of groups) {
-    if (!announced.has(part.number)) {
-      announced.add(part.number);
-      await notify(api, chatId, partMessage(part));
-    }
-    const audio = items.flatMap(({ chapter, files }) =>
-      files.map((file) => ({ kind: "audio", file, chapter })),
-    );
-    await sendAudio(api, chatId, audio, audioDir);
-  }
-}
-
+/** Sends a chapter's audio `file` here, titled «001. Chapter», with its caption (see audioCaption). */
 async function sendAudio(
   api: Api,
   chatId: number,
-  audio: { kind: string; file: string; chapter: Chapter }[],
-  audioDir: string,
+  chapter: Chapter,
+  file: string,
+  { files, audioDir }: { files: number; audioDir: string },
 ): Promise<void> {
-  for (let i = 0; i < audio.length;) {
-    const album = albumAt(audio, i).map(({ file, chapter }) => {
-      const title = audioTitle(chapter, file);
-      return {
+  const title = audioTitle(chapter, file);
+  try {
+    await api.sendAudio(
+      chatId,
+      new InputFile(file, `${path.basename(file, ".mp3")}.mp3`),
+      {
         title,
-        input: new InputFile(file, `${path.basename(file, ".mp3")}.mp3`),
-        extra: { title },
-      };
-    });
-    i += album.length;
-    try {
-      if (album.length === 1)
-        await api.sendAudio(chatId, album[0]!.input, album[0]!.extra);
-      else
-        await api.sendMediaGroup(
-          chatId,
-          album.map(({ input, extra }) =>
-            InputMediaBuilder.audio(input, extra),
-          ),
-        );
-    } catch (error) {
-      const names = album.map((a) => `«${escape(a.title)}»`).join(", ");
-      await notify(
-        api,
-        chatId,
-        `⚠️ ${bold(`Couldn't send ${names}`)}\nThe files are in ${code(escape(audioDir))}\n${problem(error)}`,
-      );
-    }
+        caption: audioCaption(chapter, file, files),
+        ...HTML,
+      },
+    );
+  } catch (error) {
+    await notify(
+      api,
+      chatId,
+      `⚠️ ${bold(`Couldn't send «${escape(title)}»`)}\nThe files are in ${code(escape(audioDir))}\n${problem(error)}`,
+    );
   }
 }
 

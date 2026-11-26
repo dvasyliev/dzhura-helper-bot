@@ -7,7 +7,12 @@ import { BOOKS_DIR, originalFolder } from "../audiobook/text.ts";
 import { runClaude } from "../translate/claude.ts";
 import { epubCover } from "./cover.ts";
 import type { Book } from "./epub.ts";
-import { downloadCover, findBook } from "./openlibrary.ts";
+import {
+  downloadCover,
+  findBook,
+  type OpenLibraryBook,
+} from "./openlibrary.ts";
+import { pdfCover } from "./pdf-cover.ts";
 
 /** What the card shows besides the title: the cover file, the year, the pages and a short description. */
 export type BookInfo = {
@@ -113,7 +118,24 @@ async function saveCover(
   return name;
 }
 
-/** An original's info: the EPUB's own cover (else Open Library's), year, pages and Claude's description. */
+/** The cover's file name in `dir`: the EPUB's own picture, else the PDF's first upright one, else Open Library's. */
+async function findCover(
+  dir: string,
+  found: OpenLibraryBook | undefined,
+): Promise<string | undefined> {
+  const files = await readdir(dir);
+  const epub = files.find((f) => /\.epub$/i.test(f));
+  const own = epub && (await epubCover(await readFile(path.join(dir, epub))));
+  if (own) return saveCover(dir, own.data, own.ext);
+  const pdf = files.find((f) => /\.pdf$/i.test(f));
+  if (pdf && (await pdfCover(path.join(dir, pdf), path.join(dir, "cover.jpg"))))
+    return "cover.jpg";
+  return found?.coverId === undefined
+    ? undefined
+    : saveCover(dir, await downloadCover(found.coverId), "jpg");
+}
+
+/** An original's info: its cover (see findCover), year, pages and Claude's description. */
 async function originalInfo(
   folder: string,
   book: Book,
@@ -123,16 +145,8 @@ async function originalInfo(
   const found = await attempt("Open Library", () =>
     findBook(book.title, book.author),
   );
-  const cover = async () => {
-    const epub = (await readdir(dir)).find((f) => /\.epub$/i.test(f));
-    const own = epub && (await epubCover(await readFile(path.join(dir, epub))));
-    if (own) return saveCover(dir, own.data, own.ext);
-    return found?.coverId === undefined
-      ? undefined
-      : saveCover(dir, await downloadCover(found.coverId), "jpg");
-  };
   const [coverName, description] = await Promise.all([
-    attempt("cover", cover),
+    attempt("cover", () => findCover(dir, found)),
     attempt("description", () => describe(book, run)),
   ]);
   const chars = book.chapters.reduce((sum, c) => sum + c.text.length, 0);
@@ -146,6 +160,25 @@ async function originalInfo(
   return saved;
 }
 
+/**
+ * Looks again for the cover of an original saved without one (Open Library may have been down then); the rest of
+ * its info stays, with Open Library's year and pages filled in when it answers now.
+ */
+async function addCover(dir: string, book: Book, saved: Saved): Promise<void> {
+  const found = await attempt("Open Library", () =>
+    findBook(book.title, book.author),
+  );
+  const cover = await attempt("cover", () => findCover(dir, found));
+  if (!cover) return;
+  const updated: Saved = {
+    ...saved,
+    cover,
+    year: saved.year ?? found?.year,
+    pages: found?.pages ?? saved.pages,
+  };
+  await writeFile(path.join(dir, INFO_FILE), JSON.stringify(updated, null, 2));
+}
+
 async function compute(
   folder: string,
   book: Book,
@@ -153,14 +186,16 @@ async function compute(
 ): Promise<void> {
   const root = options.root ?? BOOKS_DIR;
   const original = originalFolder(folder);
-  if (!(await readSaved(path.join(root, original)))) {
+  const base = await readSaved(path.join(root, original));
+  if (!base?.cover) {
     const source =
       original === folder
         ? book
         : await loadBook(original, root).catch(() => undefined);
-    if (source) await originalInfo(original, source, options);
+    if (source && base) await addCover(path.join(root, original), source, base);
+    else if (source) await originalInfo(original, source, options);
   }
-  if (original === folder) return;
+  if (original === folder || (await readSaved(path.join(root, folder)))) return;
   const description = await attempt("description", () =>
     describe(book, options.run ?? runClaude),
   );
@@ -201,11 +236,14 @@ export async function bookInfo(
   return (await readInfo(folder, root)) ?? {};
 }
 
-/** Whether the info of `folder` was computed before: its own info.json (for a translation, and its original's). */
+/**
+ * Whether the info of `folder` was computed before: its own info.json (for a translation, and its original's), with
+ * a cover; one without is looked for again.
+ */
 async function saved(folder: string, root: string): Promise<boolean> {
   const original = originalFolder(folder);
   return Boolean(
     (await readSaved(path.join(root, folder))) &&
-    (original === folder || (await readSaved(path.join(root, original)))),
+    (await readSaved(path.join(root, original)))?.cover,
   );
 }

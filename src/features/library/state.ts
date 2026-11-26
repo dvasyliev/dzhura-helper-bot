@@ -11,6 +11,7 @@ const postedSchema = z.object({
   kind: z.enum(["text", "audio", "document", "photo", "video"]),
   version: z.string(),
   fileId: z.string().optional(),
+  alone: z.boolean().optional(),
 });
 
 const topicSchema = z.object({

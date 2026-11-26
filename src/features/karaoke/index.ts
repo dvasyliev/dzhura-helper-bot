@@ -10,6 +10,7 @@ import {
   quote,
 } from "../../format.ts";
 import { busyHtml, busyWith, startJob } from "../../jobs.ts";
+import { isMusic, videoInfo } from "../video/info.ts";
 import { syncKaraoke, VERSION_NAMES } from "../library/karaoke.ts";
 import type { Feature } from "../types.ts";
 import { leftText } from "../../eta.ts";
@@ -168,13 +169,16 @@ export const karaoke: Feature = {
   title: "🎤 Generate karaoke",
   hint: `🎤 ${bold("Generate karaoke")}\nSend a YouTube clip link and I'll make a karaoke video of it.`,
   composer,
-  actions: async (input) =>
-    input.kind === "youtube"
-      ? {
-          buttons: [{ text: "🎤 Karaoke", data: `karaoke:open:${input.id}` }],
-          ask: (ctx) => askVersion(ctx, input.id),
-        }
-      : undefined,
+  actions: async (input) => {
+    if (input.kind !== "youtube") return;
+    // A video known not to be music gets a summary instead.
+    const info = await videoInfo(input.id);
+    if (info && !isMusic(info)) return;
+    return {
+      buttons: [{ text: "🎤 Karaoke", data: `karaoke:open:${input.id}` }],
+      ask: (ctx) => askVersion(ctx, input.id),
+    };
+  },
 };
 
 /** Runs the job in the background in `chatId`, editing one status message, and sends the result or asks for lyrics. False if busy. */

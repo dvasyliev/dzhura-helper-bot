@@ -17,11 +17,13 @@ import {
 } from "./index.ts";
 import { loadState, saveState } from "./state.ts";
 import { syncKaraoke } from "./karaoke.ts";
+import { syncSummaries } from "./summary.ts";
 import type { Synced } from "./topic.ts";
 
 vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
 vi.mock("./books.ts", () => ({ bookFolders: vi.fn(), syncBook: vi.fn() }));
 vi.mock("./karaoke.ts", () => ({ syncKaraoke: vi.fn() }));
+vi.mock("./summary.ts", () => ({ syncSummaries: vi.fn() }));
 vi.mock("../audiobook/library.ts", () => ({
   loadBook: vi.fn(async () => undefined),
 }));
@@ -108,14 +110,18 @@ describe("publish", () => {
     vi.mocked(bookFolders).mockResolvedValue(["A"]);
     vi.mocked(syncBook).mockResolvedValue(done);
     vi.mocked(syncKaraoke).mockResolvedValue(done);
+    vi.mocked(syncSummaries).mockResolvedValue(done);
     const reply = vi.fn(async () => undefined);
     await publish(api, reply);
     expect(syncBook).toHaveBeenCalledWith(api, "A", undefined, {
       probe: true,
     });
     expect(syncKaraoke).toHaveBeenCalledWith(api, undefined, { probe: true });
+    expect(syncSummaries).toHaveBeenCalledWith(api, undefined, {
+      probe: true,
+    });
     expect(reply).toHaveBeenCalledWith(
-      "✅ <b>Library is up to date</b>\n\n<blockquote>2 topics</blockquote>",
+      "✅ <b>Library is up to date</b>\n\n<blockquote>3 topics</blockquote>",
     );
   });
 

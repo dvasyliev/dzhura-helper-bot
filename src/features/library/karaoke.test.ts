@@ -39,7 +39,7 @@ describe("karaokeItems", () => {
       key: "Song/vocals",
       kind: "text",
       text: "⏳ <b>Song (Vocals)</b> — not made yet",
-      button: { text: "🎤 Make it", data: "karaoke:make:id-Song:vocals" },
+      buttons: [{ text: "🎤 Make it", data: "karaoke:make:id-Song:vocals" }],
     });
   });
 

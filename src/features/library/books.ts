@@ -10,12 +10,18 @@ import {
   safeFilename,
   translationFolder,
 } from "../audiobook/text.ts";
-import { partMessage, partsOf, audioTitle } from "../audiobook/parts.ts";
+import {
+  audioCaption,
+  audioTitle,
+  bookPartMessage,
+} from "../audiobook/captions.ts";
+import { bookParts } from "../audiobook/tracks.ts";
 import { bookCaption } from "../book/caption.ts";
 import type { Book } from "../book/epub.ts";
 import { readInfo } from "../book/info.ts";
 import { coverThumbnail } from "./thumbnail.ts";
 import { BOOK_MD, parseMarkdown } from "../book/markdown.ts";
+import { BOOK_EPUB } from "../book/pandoc.ts";
 import { bold, escape } from "../../format.ts";
 import { SOURCE_MD } from "../translate/pipeline.ts";
 import { withGroup } from "./group.ts";
@@ -123,6 +129,16 @@ function voicedChapters(files: string[]): number {
   return files.filter((f) => (chapterPart(f)?.part ?? 2) <= 1).length;
 }
 
+/** A voice's mp3s by track name: «001 X» → its files. */
+function filesByTrack(files: string[]): Map<string, string[]> {
+  const byTrack = new Map<string, string[]>();
+  for (const file of files) {
+    const name = chapterPart(file)!.chapter;
+    byTrack.set(name, [...(byTrack.get(name) ?? []), file]);
+  }
+  return byTrack;
+}
+
 /** Topic items for the original book `folder`, in the spec's order. */
 export async function bookItems(
   folder: string,
@@ -141,10 +157,15 @@ export async function bookItems(
 
   const dir = path.join(dirs.books, folder);
   const own = await readdir(dir).catch(() => []);
-  const originalFile = own.find((f) => /\.(epub|pdf)$/i.test(f));
+  const originalFile = own.find(
+    (f) => f !== BOOK_EPUB && /\.(epub|pdf)$/i.test(f),
+  );
   const original =
     originalFile &&
     (await fileItem("original", "document", path.join(dir, originalFile)));
+  const epub = await fileItem("epub", "document", path.join(dir, BOOK_EPUB), {
+    name: `${safeFilename(bookName(book))}.epub`,
+  });
 
   const voiced = [
     ...(await voices(dir)).map((v) => ({ ...v, book })),
@@ -183,6 +204,7 @@ export async function bookItems(
     cover ?? { key: "contents", kind: "text", text: caption, pin: true },
   ];
   if (original) items.push(original);
+  if (epub) items.push(epub);
   if (ukEpub) items.push(ukEpub);
   for (const voice of voiced) {
     items.push({
@@ -190,32 +212,38 @@ export async function bookItems(
       kind: "text",
       text: `🎧 ${bold(escape(voice.name))}`,
     });
-    const files = new Map<string, string[]>();
-    for (const file of voice.files) {
-      const name = chapterPart(file)!.chapter;
-      files.set(name, [...(files.get(name) ?? []), file]);
-    }
-    for (const part of partsOf(chapters(voice.book))) {
-      const voicedTracks = part.tracks.filter((t) => files.has(t.name));
-      if (!voicedTracks.length) continue;
-      items.push({
-        key: `part:${voice.name}/${part.number}`,
-        kind: "text",
-        text: partMessage(part),
-      });
-      for (const track of voicedTracks)
-        for (const file of files.get(track.name)!) {
-          const item = await fileItem(
-            `voice:${voice.name}/${file}`,
-            "audio",
-            path.join(voice.dir, file),
-            {
-              title: audioTitle(track, file),
-              ...(thumbnail ? { thumbnail } : {}),
-            },
-          );
-          if (item) items.push(item);
-        }
+    const files = filesByTrack(voice.files);
+    const tracks = chapters(voice.book);
+    const parts = bookParts(tracks);
+    let shownPart: string | undefined;
+    for (const [i, track] of tracks.entries()) {
+      const own = files.get(track.name) ?? [];
+      // One of the book's own parts gets a message before its first voiced audio.
+      const part = parts[i];
+      if (own.length && part && part !== shownPart) {
+        shownPart = part;
+        items.push({
+          key: `bookpart:${voice.name}/${part}`,
+          kind: "text",
+          text: bookPartMessage(
+            part,
+            tracks.filter((_, j) => parts[j] === part),
+          ),
+        });
+      }
+      for (const file of own) {
+        const item = await fileItem(
+          `voice:${voice.name}/${file}`,
+          "audio",
+          path.join(voice.dir, file),
+          {
+            title: audioTitle(track, file),
+            caption: audioCaption(track, file, own.length),
+            ...(thumbnail ? { thumbnail } : {}),
+          },
+        );
+        if (item) items.push(item);
+      }
     }
   }
   return items;
@@ -245,13 +273,12 @@ export async function syncBook(
     async (state) => {
       const book = await sourceBook(original, dirs);
       if (!book) return { changed: [], link: () => undefined };
-      const items = await bookItems(original, dirs);
       return syncTopic(
         api,
         state,
         original,
         topicName(book),
-        items,
+        await bookItems(original, dirs),
         dirs.state,
         options,
       );

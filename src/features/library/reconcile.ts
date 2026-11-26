@@ -23,7 +23,8 @@ export type TextItem = {
   kind: "text";
   /** Telegram HTML. */
   text: string;
-  button?: { text: string; data: string };
+  /** One row of buttons under the text. */
+  buttons?: { text: string; data: string }[];
   pin?: boolean;
 };
 
@@ -36,11 +37,14 @@ export type Posted = {
   kind: Item["kind"];
   version: string;
   fileId?: string;
+  /** An audio sent as its own message; one without this came in an album and is sent again on its own. */
+  alone?: boolean;
 };
 
 /** A string that changes when the message content must be edited. */
 export function version(item: Item): string {
-  if (item.kind === "text") return `${item.text}\n${item.button?.data ?? ""}`;
+  if (item.kind === "text")
+    return `${item.text}\n${item.buttons?.map((b) => b.data).join(" ") ?? ""}`;
   return `${fileVersion(item)}${item.caption ?? ""}`;
 }
 
@@ -54,7 +58,8 @@ export function fileVersion(item: FileItem): string {
 /**
  * Compares wanted items with posted messages: `cut` is the first index where
  * the order breaks (posted[cut..] are deleted, items[cut..] sent), `edit`
- * the earlier indices whose content changed. A photo cannot replace a text message, so it breaks the order.
+ * the earlier indices whose content changed. A photo cannot replace a text message, and an audio from an album
+ * cannot leave it, so both break the order.
  */
 export function reconcile(
   items: Item[],
@@ -65,7 +70,8 @@ export function reconcile(
   while (
     cut < common &&
     items[cut]!.key === posted[cut]!.key &&
-    !(items[cut]!.kind === "photo" && posted[cut]!.kind === "text")
+    !(items[cut]!.kind === "photo" && posted[cut]!.kind === "text") &&
+    !(posted[cut]!.kind === "audio" && !posted[cut]!.alone)
   )
     cut++;
   const edit: number[] = [];

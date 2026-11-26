@@ -28,24 +28,6 @@ import {
 /** Telegram's upload limit for bots. */
 export const MAX_UPLOAD = 50 * 1024 * 1024;
 
-/** Telegram's most files in one album. */
-const MAX_ALBUM = 10;
-
-/** From `start`, the audios in a row that go out as one album: up to MAX_ALBUM, none when the item is not audio. */
-export function albumAt<T extends { kind: string }>(
-  items: T[],
-  start: number,
-): T[] {
-  let end = start;
-  while (
-    end < items.length &&
-    end - start < MAX_ALBUM &&
-    items[end]!.kind === "audio"
-  )
-    end++;
-  return items.slice(start, end);
-}
-
 export type Synced = {
   changed: string[];
   link: (key: string) => string | undefined;
@@ -74,9 +56,12 @@ function topicGone(error: unknown): boolean {
   );
 }
 
-function keyboard(item: TextItem): InlineKeyboard | undefined {
-  return item.button
-    ? new InlineKeyboard().text(item.button.text, item.button.data)
+/** The row of buttons under a text item, if any. */
+export function keyboard(item: TextItem): InlineKeyboard | undefined {
+  return item.buttons?.length
+    ? InlineKeyboard.from([
+        item.buttons.map((b) => InlineKeyboard.text(b.text, b.data)),
+      ])
     : undefined;
 }
 
@@ -111,6 +96,7 @@ function postedFile(item: FileItem, sent: Message): Posted {
     kind: item.kind,
     version: version(item),
     ...(fileId ? { fileId } : {}),
+    ...(item.kind === "audio" ? { alone: true } : {}),
   };
 }
 
@@ -287,38 +273,22 @@ export async function syncTopic(
     return postedFile(item, sent);
   };
 
-  /** Two or more audios as one album; Telegram answers with a message per file. */
-  const sendAlbum = async (album: FileItem[]): Promise<Posted[]> => {
-    const sent = await api.sendMediaGroup(
-      chatId,
-      album.map((item) =>
-        InputMediaBuilder.audio(inputOf(item), mediaOptions(item)),
-      ),
-      { message_thread_id: topic.threadId },
-    );
-    return album.map((item, i) => postedFile(item, sent[i]!));
-  };
-
-  /** A file sent before with the same content, by its file id, so it is not uploaded again. */
+  /** A file sent before with the same content (its caption may differ), by its file id, so it is not uploaded again. */
   const inputOf = (item: FileItem): InputFile | string =>
     [...removed, ...lost].find(
       (m) =>
         m.key === item.key &&
         m.kind === item.kind &&
-        m.version === version(item) &&
+        sameFile(item, m) &&
         m.fileId,
     )?.fileId ?? upload(item);
 
+  // One message per file, so each audio can be reacted to and forwarded alone.
   const sendFrom = async (start: number): Promise<void> => {
-    for (let i = start; i < wanted.length;) {
-      const album = albumAt(wanted, i) as FileItem[];
-      const sent =
-        album.length > 1 ? await sendAlbum(album) : [await sendOne(wanted[i]!)];
-      for (const message of sent) {
-        topic.messages.push(message);
-        changed.push(message.key);
-      }
-      i += sent.length;
+    for (const item of wanted.slice(start)) {
+      const message = await sendOne(item);
+      topic.messages.push(message);
+      changed.push(message.key);
       await save();
     }
   };

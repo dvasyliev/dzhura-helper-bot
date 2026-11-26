@@ -51,9 +51,10 @@ dev = [
 [tool.deptry]
 # Scripts in src/features/*/scripts import their neighbours and subpackages (uk, tts) by bare name.
 known_first_party = [
-    "sentences", "tts", "uk", "voice", "pdf_book", "pdf_convert",
+    "sentences", "tts", "uk", "voice", "pdf_book", "pdf_convert", "pdf_cover",
     "align", "countin", "fetch", "karaoke", "listen", "lyrics", "render", "separate", "subtitles", "verify",
     "checks", "chunk_check", "glossary_candidates", "language", "typography", "ukrainian",
+    "info", "transcript",
 ]
 # audioread: audio-separator needs it but does not declare it. misaki[en] and en-core-web-sm: mlx-audio's Kokoro
 # needs them for English but does not declare them (glossary_candidates.py loads en-core-web-sm by name).

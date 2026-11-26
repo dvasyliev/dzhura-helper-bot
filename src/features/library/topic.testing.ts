@@ -52,10 +52,7 @@ function fakeApi() {
         photo: [{ file_id: `s${id}` }, { file_id: `f${id}` }],
       });
     }),
-    sendMediaGroup: vi.fn(
-      (_chat: number, media: unknown[], _options?: unknown) =>
-        Promise.all(media.map(() => file("audio")())),
-    ),
+    sendMediaGroup: vi.fn(),
     editMessageText: vi.fn(() => Promise.resolve(true)),
     editMessageMedia: vi.fn(() =>
       Promise.resolve({ message_id: 1, audio: { file_id: "edited" } }),
@@ -93,6 +90,7 @@ export function posted(key: string, messageId: number, item: Item) {
     kind: item.kind,
     version: version(item),
     ...(item.kind === "text" ? {} : { fileId: `f-${key}` }),
+    ...(item.kind === "audio" ? { alone: true } : {}),
   };
 }
 

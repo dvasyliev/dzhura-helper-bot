@@ -77,7 +77,10 @@ describe("syncTopic edge cases", () => {
       key: "p",
       kind: "text",
       text: "⏳",
-      button: { text: "Make", data: "make" },
+      buttons: [
+        { text: "Make", data: "make" },
+        { text: "Also", data: "also" },
+      ],
     };
     await sync(state, [video, doc, placeholder]);
 
@@ -95,7 +98,12 @@ describe("syncTopic edge cases", () => {
     expect(t.api.sendMessage.mock.calls.at(-1)![2]).toMatchObject({
       message_thread_id: 5,
       reply_markup: {
-        inline_keyboard: [[{ text: "Make", callback_data: "make" }]],
+        inline_keyboard: [
+          [
+            { text: "Make", callback_data: "make" },
+            { text: "Also", callback_data: "also" },
+          ],
+        ],
       },
     });
   });

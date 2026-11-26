@@ -1,6 +1,6 @@
 import { InputFile } from "grammy";
 import { describe, expect, it, vi } from "vitest";
-import { version, type TextItem } from "./reconcile.ts";
+import { version, type FileItem, type TextItem } from "./reconcile.ts";
 import { loadState, type LibraryState } from "./state.ts";
 import { MAX_UPLOAD, messageLink } from "./topic.ts";
 import {
@@ -17,24 +17,33 @@ vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
 
 const t = topicHarness();
 
-function contents2(): TextItem {
-  return { key: "voice:B", kind: "text", text: "B" };
-}
 const { sync } = t;
 
-/** The files of album `n` sent so far: an InputFile or a file id each. */
-function albumMedia(n: number): unknown[] {
-  const call = t.api.sendMediaGroup.mock.calls.at(n)!;
-  return (call[1] as { media: unknown }[]).map((m) => m.media);
+/** Topic 5 holding `a` as message 10 and `b` as message 11. */
+function postedAB(a: FileItem, b: FileItem): LibraryState {
+  return {
+    chatId: CHAT,
+    topics: {
+      book: {
+        threadId: 5,
+        messages: [posted("a", 10, a), posted("b", 11, b)],
+        tooBig: {},
+      },
+    },
+  };
 }
 
-/** Message 11 was deleted and two audios sent again as an album: the first uploaded, the second by its file id. */
+/** The file of audio `n` sent so far: an InputFile or a file id. */
+function audioMedia(n: number): unknown {
+  return t.api.sendAudio.mock.calls.at(n)![1];
+}
+
+/** Message 11 was deleted and two audios sent again: the first uploaded, the second by its file id. */
 function expectResent(secondFileId: string) {
   expect(t.api.deleteMessage).toHaveBeenCalledWith(CHAT, 11);
-  expect(t.api.sendMediaGroup).toHaveBeenCalledTimes(1);
-  const [first, second] = albumMedia(0);
-  expect(first).toBeInstanceOf(InputFile);
-  expect(second).toBe(secondFileId);
+  expect(t.api.sendAudio).toHaveBeenCalledTimes(2);
+  expect(audioMedia(0)).toBeInstanceOf(InputFile);
+  expect(audioMedia(1)).toBe(secondFileId);
 }
 
 describe("syncTopic", () => {
@@ -77,6 +86,7 @@ describe("syncTopic", () => {
         kind: "audio",
         version: version(audio("a")),
         fileId: "f101",
+        alone: true,
       },
     ]);
     expect(await loadState(t.file)).toEqual(state);
@@ -186,6 +196,20 @@ describe("syncTopic", () => {
     ]);
   });
 
+  it("re-sends a file by file_id with its new caption when only the caption changed", async () => {
+    const a = audio("a");
+    const b = audio("b", { caption: "old" });
+    const state = postedAB(a, b);
+    await sync(state, [audio("b", { caption: "new" })]);
+    const [, input, options] = t.api.sendAudio.mock.calls[0] as unknown as [
+      number,
+      unknown,
+      { caption: string },
+    ];
+    expect(input).toBe("f-b");
+    expect(options.caption).toBe("new");
+  });
+
   it("media to text edits the caption", async () => {
     const state: LibraryState = {
       chatId: CHAT,
@@ -212,16 +236,7 @@ describe("syncTopic", () => {
   it("treats a message that can no longer be edited as missing", async () => {
     const a = audio("a");
     const b = audio("b");
-    const state: LibraryState = {
-      chatId: CHAT,
-      topics: {
-        book: {
-          threadId: 5,
-          messages: [posted("a", 10, a), posted("b", 11, b)],
-          tooBig: {},
-        },
-      },
-    };
+    const state = postedAB(a, b);
     t.api.editMessageMedia.mockRejectedValueOnce(
       apiError("Bad Request: message to edit not found"),
     );
@@ -263,8 +278,8 @@ describe("syncTopic", () => {
 
     expect(t.api.createForumTopic).toHaveBeenCalledWith(CHAT, "Author — Title");
     expect(state.topics.book!.threadId).toBe(5);
-    expect(albumMedia(-1)[0]).toBe("f-a");
-    expect(t.api.sendMediaGroup.mock.calls.at(-1)![2]).toEqual({
+    expect(audioMedia(-2)).toBe("f-a");
+    expect(t.api.sendAudio.mock.calls.at(-2)![2]).toMatchObject({
       message_thread_id: 5,
     });
     expect(result.changed).toEqual(["a", "b"]);
@@ -359,42 +374,18 @@ describe("syncTopic", () => {
     expect(state.topics.book!.tooBig).toEqual({ big: version(big) });
   });
 
-  it("sends audios in a row as albums of up to 10", async () => {
+  it("sends each audio as its own message", async () => {
     const state: LibraryState = { chatId: CHAT, topics: {} };
-    const audios = Array.from({ length: 12 }, (_, i) => audio(`a${i}`));
+    const audios = Array.from({ length: 3 }, (_, i) => audio(`a${i}`));
     const result = await sync(state, [contents, ...audios]);
 
-    const albums = t.api.sendMediaGroup.mock.calls.map(
-      (call) => (call as unknown as [number, unknown[]])[1].length,
-    );
-    expect(albums).toEqual([10, 2]);
-    expect(t.api.sendMediaGroup.mock.calls[0]![2]).toEqual({
-      message_thread_id: 5,
-    });
-    expect(t.api.sendAudio).not.toHaveBeenCalled();
-    expect(result.changed).toHaveLength(13);
+    expect(t.api.sendMediaGroup).not.toHaveBeenCalled();
+    expect(t.api.sendAudio).toHaveBeenCalledTimes(3);
+    expect(result.changed).toHaveLength(4);
     expect(state.topics.book!.messages.map((m) => m.key)).toEqual([
       "contents",
       ...audios.map((a) => a.key),
     ]);
-    expect(state.topics.book!.messages[1]).toMatchObject({
-      kind: "audio",
-      fileId: "f101",
-    });
-  });
-
-  it("sends a lone audio on its own", async () => {
-    const state: LibraryState = { chatId: CHAT, topics: {} };
-    await sync(state, [contents, audio("a"), audio("b"), contents2()]);
-    await sync(state, [
-      contents,
-      audio("a"),
-      audio("b"),
-      contents2(),
-      audio("c"),
-    ]);
-    expect(t.api.sendMediaGroup).toHaveBeenCalledTimes(1);
-    expect(t.api.sendAudio).toHaveBeenCalledTimes(1);
   });
 
   it("needs the group's chat id", async () => {

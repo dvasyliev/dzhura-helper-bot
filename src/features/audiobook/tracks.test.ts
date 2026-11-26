@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   MIN_TRACK_CHARS,
-  PART_CHARS,
   TRACK_CHARS,
   groupChapters,
-  groupParts,
+  bookParts,
 } from "./tracks.ts";
 
 const chapter = (title: string, size: number) => ({
@@ -122,46 +121,35 @@ describe("groupChapters", () => {
   });
 });
 
-describe("groupParts", () => {
-  const track = (size: number) => ({ text: "а".repeat(size) });
-  const sizes = (parts: { text: string }[][]) =>
-    parts.map((p) => p.map((t) => t.text.length));
+describe("bookParts", () => {
+  const track = (first: string) => ({ text: `${first}\nтекст` });
 
-  it("groups tracks up to PART_CHARS", () => {
+  it("gives each track the book part it is in, from the heading on a part's first track", () => {
     expect(
-      sizes(
-        groupParts([
-          track(12_000),
-          track(12_000),
-          track(12_000),
-          track(12_000),
-          track(12_000),
-        ]),
-      ),
+      bookParts([
+        track("Вступ"),
+        track("Частина перша"),
+        track("Розділ 2"),
+        track("PART II"),
+        track("Книга третя"),
+        track("Примітки"),
+      ]),
     ).toEqual([
-      [12_000, 12_000, 12_000],
-      [12_000, 12_000],
+      undefined,
+      "Частина перша",
+      "Частина перша",
+      "PART II",
+      "Книга третя",
+      "Книга третя",
     ]);
-    expect(PART_CHARS).toBe(46_000);
   });
 
-  it("puts at most 10 tracks in a part", () => {
+  it("does not take a longer line or a chapter heading for a part", () => {
     expect(
-      groupParts(Array.from({ length: 25 }, () => track(100))).map(
-        (p) => p.length,
-      ),
-    ).toEqual([10, 10, 5]);
-  });
-
-  it("keeps a track longer than a part on its own", () => {
-    expect(
-      sizes(groupParts([track(100), track(PART_CHARS + 1), track(100)])),
-    ).toEqual([[100], [PART_CHARS + 1], [100]]);
-  });
-
-  it("gives Verne-like tracks (median ~12.8k) 3 tracks a part", () => {
-    const parts = groupParts(Array.from({ length: 71 }, () => track(12_800)));
-    expect(parts.slice(0, -1).every((p) => p.length === 3)).toBe(true);
-    expect(parts).toHaveLength(24);
+      bookParts([
+        track("Частина перша, у якій ми знайомимось"),
+        track("Розділ 2"),
+      ]),
+    ).toEqual([undefined, undefined]);
   });
 });

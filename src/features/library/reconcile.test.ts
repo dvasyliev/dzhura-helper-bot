@@ -25,14 +25,24 @@ const p = (item: Item): Posted => ({
   messageId: ++n,
   kind: item.kind,
   version: version(item),
+  ...(item.kind === "audio" ? { alone: true } : {}),
 });
 
 describe("version", () => {
   it("covers text and button data, or size, mtime and caption", () => {
     const text = { key: "t", kind: "text" as const, text: "hi" };
-    expect(version({ ...text, button: { text: "x", data: "d" } })).not.toBe(
-      version(text),
+    expect(version({ ...text, buttons: [{ text: "x", data: "d" }] })).toBe(
+      "hi\nd",
     );
+    expect(
+      version({
+        ...text,
+        buttons: [
+          { text: "x", data: "d" },
+          { text: "y", data: "e" },
+        ],
+      }),
+    ).toBe("hi\nd e");
     expect(version({ ...a, caption: "c" })).toBe("10:1:c");
     expect(version(a)).toBe("10:1:");
     expect(version({ ...a, title: "001. X" })).toBe("10:1:001. X\n");
@@ -55,6 +65,13 @@ describe("reconcile", () => {
     const text: Item = { key: "contents", kind: "text", text: "hi" };
     const photo: Item = { ...file("contents"), kind: "photo" };
     expect(reconcile([photo], [p(text)])).toEqual({ edit: [], cut: 0 });
+  });
+  it("cuts at an audio posted in an album, so it is sent again on its own", () => {
+    const old = { ...p(b), alone: undefined };
+    expect(reconcile([a, b, c], [p(a), old, p(c)])).toEqual({
+      edit: [],
+      cut: 1,
+    });
   });
   it("changes nothing when all match", () =>
     expect(reconcile([a, b], [p(a), p(b)])).toEqual({ edit: [], cut: 2 }));

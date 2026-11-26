@@ -7,6 +7,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Book } from "./epub.ts";
 import { bookInfo, readInfo } from "./info.ts";
 import { mockServer } from "./msw.testing.ts";
+import { pdfCover } from "./pdf-cover.ts";
+
+vi.mock("./pdf-cover.ts", () => ({ pdfCover: vi.fn(async () => false) }));
 
 const server = mockServer();
 const book: Book = {
@@ -76,6 +79,38 @@ describe("bookInfo", () => {
     );
     const info = await bookInfo("Dip", book, { root, run: async () => "d" });
     expect(info.cover).toBe(join(root, "Dip", "cover.png"));
+  });
+
+  it("takes a PDF's own cover before Open Library's", async () => {
+    openLibrary();
+    await writeFile(join(root, "Dip", "dip.pdf"), "pdf");
+    vi.mocked(pdfCover).mockImplementationOnce(async (_pdf, out) => {
+      await writeFile(out, "jpeg");
+      return true;
+    });
+    const info = await bookInfo("Dip", book, { root, run: async () => "d" });
+    expect(pdfCover).toHaveBeenCalledWith(
+      join(root, "Dip", "dip.pdf"),
+      join(root, "Dip", "cover.jpg"),
+    );
+    expect(await readFile(join(root, "Dip", "cover.jpg"), "utf8")).toBe("jpeg");
+    expect(info.cover).toBe(join(root, "Dip", "cover.jpg"));
+  });
+
+  it("looks again for a cover it could not get, keeping the description", async () => {
+    await writeFile(
+      join(root, "Dip", "info.json"),
+      JSON.stringify({ pages: 2, description: "Було." }),
+    );
+    openLibrary();
+    const run = vi.fn(async () => "Нове.");
+    expect(await bookInfo("Dip", book, { root, run })).toEqual({
+      cover: join(root, "Dip", "cover.jpg"),
+      year: 2007,
+      pages: 96,
+      description: "Було.",
+    });
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("leaves out what failed and estimates the pages", async () => {

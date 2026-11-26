@@ -128,11 +128,9 @@ describe("bookItems", () => {
       "original",
       "uk-epub",
       "voice:Kokoro",
-      "part:Kokoro/1",
       "voice:Kokoro/001 One.mp3",
       "voice:Kokoro/002 Two.mp3",
       "voice:Holos",
-      "part:Holos/1",
       "voice:Holos/001 Один.mp3",
     ]);
     expect(items[0]).toMatchObject({
@@ -149,22 +147,84 @@ describe("bookItems", () => {
       ].join("\n"),
     });
     expect(items[2]).toMatchObject({ kind: "document", name: "А - Ориг.epub" });
-    expect(items[6]).toMatchObject({
+    expect(items[5]).toMatchObject({
       kind: "audio",
       title: "002. Two",
     });
-    expect(items[6]).not.toHaveProperty("caption");
+    expect(items[5]).toHaveProperty("caption", "Two\n⏱ 7 min");
   });
 });
 
-describe("bookItems with parts", () => {
-  it("puts the part message with its chapter titles before the part's audio", async () => {
+describe("bookItems of a PDF made into an EPUB", () => {
+  it("puts the PDF as the original and the EPUB right after it", async () => {
+    await put(
+      "books/Orig/book.md",
+      markdown("Orig", "A", ["One", "Two"], ENGLISH),
+    );
+    await put("books/Orig/book.epub");
+    await put("books/Orig/orig.pdf");
+    const items = await bookItems("Orig", dirs);
+    expect(items.map((i) => i.key)).toEqual(["contents", "original", "epub"]);
+    expect(items[1]).toMatchObject({
+      file: join(dirs.books, "Orig", "orig.pdf"),
+    });
+    expect(items[2]).toMatchObject({
+      kind: "document",
+      file: join(dirs.books, "Orig", "book.epub"),
+      name: "A - Orig.epub",
+    });
+  });
+});
+
+describe("bookItems captions", () => {
+  it("gives each audio its chapter title and estimated time as the caption", async () => {
     await translatedBook();
     const items = await bookItems("Orig", dirs);
-    expect(items.find((i) => i.key === "part:Kokoro/1")).toMatchObject({
+    expect(
+      items.find((i) => i.key === "voice:Kokoro/001 One.mp3"),
+    ).toMatchObject({ caption: expect.stringMatching(/^One\n⏱ \d+ min$/) });
+  });
+});
+
+describe("bookItems of a book with its own parts", () => {
+  it("puts a message with the part's name and time before its first audio", async () => {
+    const chapter = (title: string, first?: string) => [
+      `# ${title}`,
+      "",
+      ...(first ? [first, ""] : []),
+      ENGLISH.repeat(100),
+      "",
+    ];
+    await put(
+      "books/Parts/book.md",
+      [
+        "---",
+        'title: "Parts"',
+        'author: "A"',
+        "---",
+        "",
+        ...chapter("One", "Частина перша"),
+        ...chapter("Two"),
+        ...chapter("Three", "Частина друга"),
+      ].join("\n"),
+    );
+    for (const name of ["001 One", "002 Two", "003 Three"])
+      await put(`books/Parts/audio/Kokoro/${name}.mp3`);
+    const items = await bookItems("Parts", dirs);
+    expect(items.map((i) => i.key)).toEqual([
+      "contents",
+      "voice:Kokoro",
+      "bookpart:Kokoro/Частина перша",
+      "voice:Kokoro/001 One.mp3",
+      "voice:Kokoro/002 Two.mp3",
+      "bookpart:Kokoro/Частина друга",
+      "voice:Kokoro/003 Three.mp3",
+    ]);
+    expect(items[2]).toMatchObject({
       kind: "text",
-      text: "🎧 <b>Part 1</b> · tracks 1–2 · ≈14 min\n\n• One\n• Two",
+      text: "📖 <b>Частина перша</b>\n⏱ 14 min",
     });
+    expect(items[3]).toHaveProperty("caption", "One\n⏱ 7 min");
   });
 });
 

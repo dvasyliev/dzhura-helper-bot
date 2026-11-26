@@ -1,10 +1,4 @@
-import {
-  Composer,
-  InlineKeyboard,
-  InputFile,
-  type Api,
-  type Context,
-} from "grammy";
+import { Composer, InlineKeyboard, type Context } from "grammy";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { offer, SEND_AGAIN } from "../audiobook/index.ts";
@@ -21,7 +15,7 @@ import { bold, code, escape, HTML, problem, quote } from "../../format.ts";
 import type { Book } from "../book/epub.ts";
 import { readInfo } from "../book/info.ts";
 import { parseMarkdown } from "../book/markdown.ts";
-import { syncBook } from "../library/books.ts";
+import { sendEpub } from "../library/send.ts";
 import type { Feature } from "../types.ts";
 import { findFolder, folderKey, translateButton } from "./button.ts";
 import type { Usage } from "./claude.ts";
@@ -169,7 +163,15 @@ async function run(ctx: Context, chatId: number, folder: string, source: Book) {
       chatId,
       `⚠️ ${bold("The EPUB needs pandoc")} (${code("brew install pandoc")})\nThe book is added to the library anyway.`,
     );
-  else await sendEpub(ctx.api, chatId, folder, epub, safeFilename(name));
+  else
+    await sendEpub(
+      ctx.api,
+      chatId,
+      folder,
+      epub,
+      safeFilename(name),
+      "uk-epub",
+    );
   console.log(`Translated «${source.title}». ${usageLines(usage).join(", ")}`);
   await notify(
     ctx.api,
@@ -178,32 +180,6 @@ async function run(ctx: Context, chatId: number, folder: string, source: Book) {
   );
   const translated = await loadBook(translationFolder(folder));
   if (translated) await offer(ctx, translated, "uk");
-}
-
-/** With a library group: `Done → <link>` to the EPUB's message (nothing when there is none); without one the EPUB itself. */
-export async function sendEpub(
-  api: Api,
-  chatId: number,
-  folder: string,
-  epub: string,
-  name: string,
-): Promise<void> {
-  const synced = await syncBook(api, folder);
-  if (synced) {
-    const first = synced.changed[0];
-    const link = synced.link("uk-epub") ?? (first && synced.link(first));
-    if (link) await notify(api, chatId, `✅ ${bold("Done")} → ${escape(link)}`);
-    return;
-  }
-  await api
-    .sendDocument(chatId, new InputFile(epub, `${name}.epub`))
-    .catch((error) =>
-      notify(
-        api,
-        chatId,
-        `⚠️ ${bold("Couldn't send the EPUB")}\nIt is ${code(escape(epub))}\n${problem(error)}`,
-      ),
-    );
 }
 
 const compact = new Intl.NumberFormat("en", {
