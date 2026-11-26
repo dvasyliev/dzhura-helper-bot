@@ -11,6 +11,7 @@ import { config } from "../../config.ts";
 import { bold, code, escape, HTML } from "../../format.ts";
 import {
   reconcile,
+  fileVersion,
   version,
   type FileItem,
   type Item,
@@ -28,7 +29,7 @@ import {
 export const MAX_UPLOAD = 50 * 1024 * 1024;
 
 /** Telegram's most files in one album. */
-export const MAX_ALBUM = 10;
+const MAX_ALBUM = 10;
 
 /** From `start`, the audios in a row that go out as one album: up to MAX_ALBUM, none when the item is not audio. */
 export function albumAt<T extends { kind: string }>(
@@ -110,9 +111,9 @@ function postedFile(item: FileItem, sent: Message): Posted {
   };
 }
 
-/** Whether the posted message holds this item's file, only its caption may differ. */
+/** Whether the posted message holds this item's file and audio title, only its caption may differ. */
 function sameFile(item: FileItem, old: Posted): boolean {
-  return old.version.startsWith(`${item.size}:${item.mtime}:`);
+  return old.version.startsWith(fileVersion(item));
 }
 
 function upload(item: FileItem): InputFile {

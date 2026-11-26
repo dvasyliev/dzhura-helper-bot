@@ -4,6 +4,7 @@ import {
   assemble,
   MAX_CHUNK_CHARS,
   paragraphs,
+  chunkFileName,
   splitChunks,
 } from "./chunks.ts";
 
@@ -71,5 +72,47 @@ describe("assemble", () => {
 describe("paragraphs", () => {
   it("splits on blank lines, trims and drops empty ones", () => {
     expect(paragraphs("a\n\n  b \n\n\n\nc\n")).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("chunkFileName", () => {
+  const chunks = splitChunks({
+    title: "T",
+    chapters: [
+      { title: "A/B: one", text: "a" },
+      {
+        title: "Two",
+        text: Array.from({ length: 10 }, () => "x".repeat(1000)).join("\n"),
+        level: 2,
+      },
+    ],
+  });
+
+  it("names a chunk after its chapter, with a piece number when the chapter has several", () => {
+    expect(chunks.map((_, i) => chunkFileName(chunks, i))).toEqual([
+      "0001-a-b-one",
+      "0002-two-1",
+      "0003-two-2",
+    ]);
+  });
+
+  it("keeps Ukrainian letters", () => {
+    const uk = splitChunks({
+      title: "T",
+      chapters: [{ title: "Розділ 1. Підсумок: «Бути»", text: "a" }],
+    });
+    expect(chunkFileName(uk, 0)).toBe("0001-розділ-1-підсумок-бути");
+  });
+
+  it("keeps the chapter's level in its heading", () => {
+    expect(chunks[1].text.startsWith("## Two\n\n")).toBe(true);
+  });
+
+  it("cuts a long title", () => {
+    const long = splitChunks({
+      title: "T",
+      chapters: [{ title: "w".repeat(200), text: "a" }],
+    });
+    expect(chunkFileName(long, 0)).toBe(`0001-${"w".repeat(60)}`);
   });
 });

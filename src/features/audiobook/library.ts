@@ -14,7 +14,8 @@ import { VOICES, isVoiced, type Voice, type VoiceJob } from "./voice.ts";
 /** At most this many books (found by name, or unfinished) are offered as buttons. */
 export const MAX_FOUND = 5;
 
-export type Chapter = VoiceJob["chapters"][number];
+/** A track; `title` is its first chapter's title as written in the book, for the audio's title. */
+export type Chapter = VoiceJob["chapters"][number] & { title: string };
 
 /** A book with its folder under BOOKS_DIR, where all its files are. */
 export type ShelfBook = Book & { folder: string };
@@ -123,5 +124,6 @@ export function chapters(book: Book): Chapter[] {
     index,
     name: chapterName(index + 1, c.title),
     text: c.text,
+    title: c.title,
   }));
 }

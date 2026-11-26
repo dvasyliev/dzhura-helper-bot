@@ -35,6 +35,7 @@ describe("version", () => {
     );
     expect(version({ ...a, caption: "c" })).toBe("10:1:c");
     expect(version(a)).toBe("10:1:");
+    expect(version({ ...a, title: "001. X" })).toBe("10:1:001. X\n");
   });
 });
 

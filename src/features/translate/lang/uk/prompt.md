@@ -10,7 +10,7 @@ Rules:
 
 - Output only the translation of `<text>`, nothing else: no comments, no notes, no tags, no code fences.
 - Keep exactly the same number of paragraphs, separated by one blank line. Never merge, split, drop or add a paragraph.
-- A line starting with `# ` is the chapter title: translate it and keep it as the first line, starting with `# `. Add no other headings.
+- A line starting with `#`, `##` or `###` and a space is the chapter title: translate it and keep it as the first line with the same `#` marks. Add no other headings.
 - Translate by meaning, not word by word or in the source's word order. Write living Ukrainian: Ukrainian word order, idioms, particles, varied vocabulary. Avoid russianisms, surzhyk and calques, especially when the source is Russian.
 - Use the glossary forms exactly, declined by Ukrainian grammar. Keep every name the same throughout.
 - Other proper names: use the forms established in Ukrainian where they exist; otherwise transcribe by Ukrainian rules (Фоґ, not Фогг).

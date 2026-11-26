@@ -9,9 +9,13 @@ vi.mock("./voice.ts", () => ({ voiceChapters: vi.fn() }));
 vi.mock("../translate/claude.ts", () => ({
   runClaude: vi.fn(async () => "Про розділ."),
 }));
-vi.mock("./descriptions.ts", async (original) => ({
-  ...(await original<typeof import("./descriptions.ts")>()),
-  readDescriptions: vi.fn(async () => ({ "001": "Про <розділ>." })),
+/** The book's tracks, as `chapters(book)` returns them; each test sets its own. */
+const tracks = vi.hoisted(() => ({ list: [] as unknown[] }));
+vi.mock("./library.ts", () => ({ chapters: () => tracks.list }));
+vi.mock("./parts.ts", async (original) => ({
+  ...(await original<typeof import("./parts.ts")>()),
+  describeParts: () => async () => {},
+  readParts: vi.fn(async () => ({ "001|003": "Про <море>." })),
 }));
 vi.mock("../library/books.ts", () => ({ syncBook: vi.fn() }));
 
@@ -28,8 +32,8 @@ const voice: Voice = {
   language: "uk",
 } as Voice;
 const todo = [
-  { index: 0, name: "001 One", text: "one" },
-  { index: 1, name: "002 Two", text: "two" },
+  { index: 0, name: "001 One", text: "one", title: "One" },
+  { index: 1, name: "002 Two", text: "two", title: "Two" },
 ];
 
 /** Chapters 001…`n`, each voiced into one file. */
@@ -38,7 +42,9 @@ function many(n: number) {
     index: i,
     name: String(i + 1).padStart(3, "0"),
     text: "x",
+    title: `Chapter: ${i + 1}`,
   }));
+  tracks.list = chapters;
   events(
     chapters.map((c) => ({ chapter: c.index, files: [`/a/${c.name}.mp3`] })),
   );
@@ -74,7 +80,11 @@ function failingThird() {
     { chapter: 1, files: ["/a/002 Two.mp3"] },
     { chapter: 2, error: "boom" },
   ]);
-  return [...todo, { index: 2, name: "003 Three", text: "x" }];
+  tracks.list = [
+    ...todo,
+    { index: 2, name: "003 Three", text: "x", title: "Three" },
+  ];
+  return tracks.list as typeof todo;
 }
 
 function synced(changed: string[]): Synced {
@@ -82,11 +92,12 @@ function synced(changed: string[]): Synced {
 }
 
 beforeEach(() => {
+  tracks.list = todo;
   vi.mocked(syncBook).mockReset();
 });
 
 describe("voiceBook", () => {
-  it("sends the first chapter at once, then every 10, then the rest; Done once", async () => {
+  it("sends the first chapter at once, then each part when it is voiced, then the rest; Done once", async () => {
     const chapters = many(12);
     const api = fakeApi();
     const sentAfter: number[] = [];
@@ -103,8 +114,8 @@ describe("voiceBook", () => {
       done: 0,
       total: 12,
     });
-    // After chapter 1, chapter 11 (10 more), and 12 at the end.
-    expect(sentAfter).toEqual([0, 11, 12]);
+    // After chapter 1, chapter 10 (the end of the first part of 10 tracks), and 12 at the end.
+    expect(sentAfter).toEqual([0, 10, 12]);
     expect(syncBook).toHaveBeenCalledWith(api, folder);
     expect(api.sendAudio).not.toHaveBeenCalled();
     expect(api.sendMessage).toHaveBeenLastCalledWith(
@@ -114,7 +125,7 @@ describe("voiceBook", () => {
     );
   });
 
-  it("without a group sends the audio here, titled by chapter, in albums", async () => {
+  it("without a group sends the part message before its audio, with the chapter titles as captions", async () => {
     vi.mocked(syncBook).mockResolvedValue(undefined);
     for (const mode of ["new", "regen"] as const) {
       const chapters = many(3);
@@ -122,16 +133,61 @@ describe("voiceBook", () => {
       await voiceBook(api as unknown as Api, 5, book, voice, chapters, mode);
       expect(api.sendAudio).toHaveBeenCalledTimes(1);
       expect(api.sendAudio).toHaveBeenCalledWith(5, expect.anything(), {
-        title: "001",
-        parse_mode: "HTML",
-        caption: "Про &lt;розділ&gt;.",
+        title: "001. Chapter: 1",
       });
       const [[, album]] = api.sendMediaGroup.mock.calls as unknown as [
         [number, { title: string }[]],
       ];
-      expect(album.map((a) => a.title)).toEqual(["002", "003"]);
-      expect(api.sendMessage).not.toHaveBeenCalled();
+      expect(album.map((a) => a.title)).toEqual([
+        "002. Chapter: 2",
+        "003. Chapter: 3",
+      ]);
+      // The part message goes once, before the first audio, with the saved description.
+      expect(api.sendMessage).toHaveBeenCalledTimes(1);
+      expect(api.sendMessage).toHaveBeenCalledWith(
+        5,
+        "🎧 <b>Part 1</b> · tracks 1–3 · ≈1 min\n\nПро &lt;море&gt;.",
+        { parse_mode: "HTML" },
+      );
     }
+  });
+
+  it("without a group sends each part's message once, before its first audio", async () => {
+    vi.mocked(syncBook).mockResolvedValue(undefined);
+    const long = Array.from({ length: 3 }, (_, i) => ({
+      index: i,
+      name: `00${i + 1}`,
+      text: "x".repeat(30_000),
+      title: `T${i + 1}`,
+    }));
+    tracks.list = long;
+    events(
+      long.map((c) => ({ chapter: c.index, files: [`/a/${c.name}.mp3`] })),
+    );
+    const order: string[] = [];
+    const api = {
+      ...fakeApi(),
+      sendMessage: vi.fn(async (_chat: number, text: string) => {
+        order.push(text.split(" · ")[0]!);
+        return {};
+      }),
+      sendAudio: vi.fn(
+        async (_chat: number, _file: unknown, extra: { title: string }) => {
+          order.push(extra.title);
+          return {};
+        },
+      ),
+    };
+    await voiceBook(api as unknown as Api, 5, book, voice, long, "new");
+    // 30000-character tracks: one per part.
+    expect(order).toEqual([
+      "🎧 <b>Part 1</b>",
+      "001. T1",
+      "🎧 <b>Part 2</b>",
+      "002. T2",
+      "🎧 <b>Part 3</b>",
+      "003. T3",
+    ]);
   });
 
   it("sends the chapters before a failed one and rethrows", async () => {

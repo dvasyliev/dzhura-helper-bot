@@ -125,9 +125,11 @@ describe("bookItems", () => {
       "original",
       "uk-epub",
       "voice:Kokoro",
+      "part:Kokoro/1",
       "voice:Kokoro/001 One.mp3",
       "voice:Kokoro/002 Two.mp3",
       "voice:Holos",
+      "part:Holos/1",
       "voice:Holos/001 Один.mp3",
     ]);
     expect(items[0]).toMatchObject({
@@ -144,31 +146,33 @@ describe("bookItems", () => {
       ].join("\n"),
     });
     expect(items[2]).toMatchObject({ kind: "document", name: "А - Ориг.epub" });
-    expect(items[5]).toMatchObject({
+    expect(items[6]).toMatchObject({
       kind: "audio",
-      title: "002 Two",
+      title: "002. Two",
     });
+    expect(items[6]).not.toHaveProperty("caption");
   });
 });
 
-describe("bookItems with descriptions", () => {
-  it("captions a chapter's audio with its description", async () => {
+describe("bookItems with part descriptions", () => {
+  it("puts the part message, with its description when there is one, before the part's audio", async () => {
     await translatedBook();
+    let items = await bookItems("Orig", dirs);
+    expect(items.find((i) => i.key === "part:Kokoro/1")).toMatchObject({
+      kind: "text",
+      text: "🎧 <b>Part 1</b> · tracks 1–2 · ≈14 min",
+    });
     await put(
-      "books/Orig/descriptions.json",
-      JSON.stringify({ "001 One": "Про <щось>." }),
+      "books/Orig/parts.json",
+      JSON.stringify({ "001 One|002 Two": "Про <щось>." }),
     );
-    const items = await bookItems("Orig", dirs);
+    items = await bookItems("Orig", dirs);
+    expect(items.find((i) => i.key === "part:Kokoro/1")).toMatchObject({
+      text: "🎧 <b>Part 1</b> · tracks 1–2 · ≈14 min\n\nПро &lt;щось&gt;.",
+    });
     expect(
-      items.find((i) => i.key === "voice:Kokoro/001 One.mp3"),
-    ).toMatchObject({ caption: "Про &lt;щось&gt;." });
-    expect(
-      (
-        items.find((i) => i.key === "voice:Kokoro/002 Two.mp3") as {
-          caption?: string;
-        }
-      ).caption,
-    ).toBeUndefined();
+      (items.find((i) => i.key === "part:Holos/1") as { text: string }).text,
+    ).not.toContain("Про");
   });
 });
 

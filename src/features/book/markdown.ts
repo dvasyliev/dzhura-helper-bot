@@ -1,11 +1,19 @@
-import type { Book } from "./epub.ts";
+import { MAX_LEVEL, type Book } from "./epub.ts";
 
 /** The book's text as written by scripts/pdf_convert.py; kept next to the original so it is read only once. */
 export const BOOK_MD = "book.md";
 
+const HEADING = /^(#{1,3}) /;
+
+/** The `#` marks of a chapter's heading in book.md. */
+export function headingMarks(level = 1): string {
+  return "#".repeat(Math.min(level, MAX_LEVEL));
+}
+
 /**
- * Reads book.md: YAML front matter with quoted `title` and `author`, a `# ` line per chapter, one line per
- * paragraph. A text line starting with `\#` is a paragraph, not a chapter. `fileName` names the book when it has
+ * Reads book.md: YAML front matter with quoted `title` and `author`, a `# ` line per top-level chapter (`## `
+ * and `### ` for its sections; a book with no sections has no levels), one line per paragraph. A text line starting
+ * with `\#` is a paragraph, not a chapter. `fileName` names the book when it has
  * no title.
  */
 export function parseMarkdown(text: string, fileName = "Book"): Book {
@@ -18,14 +26,21 @@ export function parseMarkdown(text: string, fileName = "Book"): Book {
   let paragraphs: string[] = [];
   const body = text.slice(front?.[0].length ?? 0);
   for (const line of body.split("\n")) {
-    if (line.startsWith("# ")) {
+    const heading = line.match(HEADING);
+    if (heading) {
       paragraphs = [];
-      chapters.push({ title: line.slice(2).trim(), text: "" });
+      chapters.push({
+        title: line.slice(heading[0].length).trim(),
+        text: "",
+        level: heading[1].length,
+      });
     } else if (line.trim() && chapters.length) {
       paragraphs.push(line.startsWith("\\#") ? line.slice(1) : line);
       chapters[chapters.length - 1].text = paragraphs.join("\n");
     }
   }
+  if (chapters.every((c) => c.level === 1))
+    for (const c of chapters) delete c.level;
   return {
     title: meta("title") || fileName.replace(/\.[^.]+$/, ""),
     author: meta("author"),
@@ -39,7 +54,7 @@ export function toMarkdown(book: Book): string {
   if (book.author) lines.push(`author: ${JSON.stringify(book.author)}`);
   lines.push("---", "");
   for (const chapter of book.chapters) {
-    lines.push(`# ${oneLine(chapter.title)}`, "");
+    lines.push(`${headingMarks(chapter.level)} ${oneLine(chapter.title)}`, "");
     for (const paragraph of chapter.text.split("\n")) {
       const text = markdownParagraph(paragraph);
       if (text) lines.push(text, "");

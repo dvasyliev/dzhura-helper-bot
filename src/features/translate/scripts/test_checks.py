@@ -62,6 +62,7 @@ def test_checks_every_glossary_term_it_is_given() -> None:
 def test_flags_a_first_chunk_that_loses_its_title_line() -> None:
     assert kinds("# One\n\nText.", "Один\n\nТекст.", first=True) == ["title"]
     assert kinds("# One\n\nText.", "# Один\n\nТекст.", first=True) == []
+    assert kinds("## One\n\nText.", "## Один\n\nТекст.", first=True) == []
 
 
 def test_flags_a_title_line_in_a_chunk_that_is_not_first() -> None:

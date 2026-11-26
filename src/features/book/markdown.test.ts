@@ -23,6 +23,27 @@ describe("parseMarkdown", () => {
   });
 });
 
+describe("chapter levels", () => {
+  it("reads and writes ## and ### sections", () => {
+    const book = {
+      title: "T",
+      chapters: [
+        { title: "One", text: "a", level: 1 },
+        { title: "One A", text: "b", level: 2 },
+        { title: "One A i", text: "c", level: 3 },
+      ],
+    };
+    const text = toMarkdown(book);
+    expect(text).toContain("\n## One A\n");
+    expect(text).toContain("\n### One A i\n");
+    expect(parseMarkdown(text)).toEqual(book);
+  });
+
+  it("leaves levels out of a book without sections", () => {
+    expect(parseMarkdown(md).chapters[0]).not.toHaveProperty("level");
+  });
+});
+
 describe("toMarkdown", () => {
   it("round-trips with parseMarkdown", () => {
     const book = {

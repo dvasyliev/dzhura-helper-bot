@@ -10,6 +10,9 @@ async function buildEpub(opts: {
   items: Item[];
   nav?: Record<string, string>;
   ncx?: Record<string, string>;
+  /** Raw contents of nav's `<ol>` / ncx's `<navMap>`, for nested tables of contents. */
+  navList?: string;
+  navMap?: string;
   metadata?: string;
 }) {
   const zip = new JSZip();
@@ -21,11 +24,11 @@ async function buildEpub(opts: {
     (i) =>
       `<item id="${i.id}" href="${i.href}" media-type="application/xhtml+xml"/>`,
   );
-  if (opts.nav)
+  if (opts.nav || opts.navList)
     manifest.push(
       `<item id="nav" href="nav.xhtml" properties="nav" media-type="application/xhtml+xml"/>`,
     );
-  if (opts.ncx)
+  if (opts.ncx || opts.navMap)
     manifest.push(
       `<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>`,
     );
@@ -46,6 +49,13 @@ async function buildEpub(opts: {
       `<html><body><nav epub:type="toc"><ol>${links.join("")}</ol></nav></body></html>`,
     );
   }
+  if (opts.navList)
+    zip.file(
+      "OEBPS/nav.xhtml",
+      `<html><body><nav epub:type="toc"><ol>${opts.navList}</ol></nav></body></html>`,
+    );
+  if (opts.navMap)
+    zip.file("OEBPS/toc.ncx", `<ncx><navMap>${opts.navMap}</navMap></ncx>`);
   if (opts.ncx) {
     const points = Object.entries(opts.ncx).map(
       ([href, t]) =>
@@ -150,6 +160,59 @@ describe("parseEpub", () => {
       ),
     ).toBe(true);
     expect(book.chapters[1].text.startsWith("Розділ II. Пляшка\n")).toBe(true);
+  });
+
+  it("keeps the levels of a nested toc.ncx", async () => {
+    const point = (href: string, title: string, inner = "") =>
+      `<navPoint><navLabel><text>${title}</text></navLabel><content src="${href}"/>${inner}</navPoint>`;
+    const book = await parseEpub(
+      await buildEpub({
+        items: ["a", "b", "c"].map((id) => ({
+          id,
+          href: `${id}.xhtml`,
+          body: `<p>${LONG}</p>`,
+        })),
+        navMap:
+          point("a.xhtml", "One", point("b.xhtml", "One A")) +
+          point("c.xhtml", "Two"),
+      }),
+    );
+    expect(book.chapters.map((c) => [c.title, c.level])).toEqual([
+      ["One", 1],
+      ["One A", 2],
+      ["Two", 1],
+    ]);
+  });
+
+  it("keeps the levels of a nested EPUB 3 nav", async () => {
+    const book = await parseEpub(
+      await buildEpub({
+        items: ["a", "b"].map((id) => ({
+          id,
+          href: `${id}.xhtml`,
+          body: `<p>${LONG}</p>`,
+        })),
+        navList: `<li><a href="a.xhtml">One</a><ol><li><a href="b.xhtml">One A</a></li></ol></li>`,
+      }),
+    );
+    expect(book.chapters.map((c) => [c.title, c.level])).toEqual([
+      ["One", 1],
+      ["One A", 2],
+    ]);
+  });
+
+  it("moves the sections of a short part page up a level", async () => {
+    const book = await parseEpub(
+      await buildEpub({
+        items: ["a", "b", "c"].map((id) => ({
+          id,
+          href: `${id}.xhtml`,
+          body: id === "a" ? "<p>Частина перша</p>" : `<p>${LONG}</p>`,
+        })),
+        navList: `<li><a href="a.xhtml">Частина перша</a><ol><li><a href="b.xhtml">Розділ I</a></li><li><a href="c.xhtml">Розділ II</a></li></ol></li>`,
+      }),
+    );
+    expect(book.chapters.map((c) => c.level)).toEqual([undefined, undefined]);
   });
 
   it("skips near-empty items such as the cover", async () => {

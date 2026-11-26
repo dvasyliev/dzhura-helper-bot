@@ -83,7 +83,7 @@ describe("translateBook, chunks at once", () => {
       cacheRead: 120,
       costUsd: 1.5,
     });
-    await rm(join(dir, "chunks", "0002.uk.md"));
+    await rm(join(dir, "chunks", "0002-two.uk.md"));
     const second = await translateBook(book, { ...opts, run: counted() });
     expect(second.usage.calls).toBe(4);
     // Only the chunk translated again counts for the pace, not the one kept.

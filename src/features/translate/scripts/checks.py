@@ -56,11 +56,14 @@ def check_paragraphs(source: str, translation: str) -> list[Problem]:
     return [Problem("paragraphs", f"{before} in the source, {after} in the translation")]
 
 
+HEADING = re.compile(r"^#{1,3} ", re.MULTILINE)
+
+
 def check_title(translation: str, first: bool | None) -> list[Problem]:
-    """A chunk that opens a chapter must start with its `# ` title line; no other chunk may have one."""
-    if first is True and not translation.startswith("# "):
+    """A chunk that opens a chapter must start with its `#` title line (`##`, `###` for a section); no other may."""
+    if first is True and not HEADING.match(translation):
         return [Problem("title", "the # title line is missing")]
-    if first is False and re.search(r"^# ", translation, re.MULTILINE):
+    if first is False and HEADING.search(translation):
         return [Problem("title", "a # title line in a chunk that does not open a chapter")]
     return []
 

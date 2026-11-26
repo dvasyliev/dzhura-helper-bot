@@ -15,7 +15,13 @@ vi.mock("../audiobook/library.ts", async () => {
   return {
     shelf: async () => ["Book"],
     loadBook: async () => ({ title: "Book", chapters: [], folder: "Book" }),
-    chapters: () => names.map((name) => ({ name, text: "слово ".repeat(100) })),
+    chapters: () =>
+      names.map((name, index) => ({
+        index,
+        name,
+        title: name,
+        text: "слово ".repeat(100),
+      })),
   };
 });
 
@@ -32,13 +38,13 @@ beforeEach(async () => {
 describe("describeText", () => {
   it("shows progress and the time left", () => {
     expect(describeText(3, 10, 5)).toBe(
-      "📝 <b>Describing chapters</b>\n3 of 10 · ≈5 min left",
+      "📝 <b>Describing parts</b>\n3 of 10 · ≈5 min left",
     );
   });
 });
 
 describe("describeShelf", () => {
-  it("describes only voiced tracks, shows progress, and a second run calls nothing", async () => {
+  it("describes only parts with voiced tracks, shows progress, and a second run calls nothing", async () => {
     await writeFile(
       join(root.dir, "Book", "audio", "Voice", "001 Sea.mp3"),
       "",
@@ -49,11 +55,9 @@ describe("describeShelf", () => {
     expect(run).toHaveBeenCalledTimes(1);
     expect(shown[0]).toContain("0 of 1");
     expect(
-      JSON.parse(
-        await readFile(join(root.dir, "Book", "descriptions.json"), "utf8"),
-      ),
+      JSON.parse(await readFile(join(root.dir, "Book", "parts.json"), "utf8")),
     ).toEqual({
-      "001 Sea": "Опис.",
+      "000 Intro|001 Sea": "Опис.",
     });
     await describeShelf(show, run);
     expect(run).toHaveBeenCalledTimes(1);

@@ -18,7 +18,7 @@ import {
 } from "./pipeline.testing.ts";
 
 describe("translateBook", () => {
-  it("describes the tracks of the translated book and adds the usage", async () => {
+  it("describes the parts of the translated book and adds the usage", async () => {
     const { dir, opts } = await setup();
     const { run } = fakeRun((s) =>
       paragraphs(s)
@@ -35,8 +35,7 @@ describe("translateBook", () => {
     };
     const withDescriptions = vi.fn(
       async (prompt: string, input: string, onUsage?: (u: Usage) => void) => {
-        if (!prompt.endsWith("description-prompt.md"))
-          return run(prompt, input);
+        if (!prompt.endsWith("part-prompt.md")) return run(prompt, input);
         onUsage?.(used);
         return "Опис.";
       },
@@ -45,9 +44,7 @@ describe("translateBook", () => {
       ...opts,
       run: withDescriptions,
     });
-    const saved = JSON.parse(
-      await readFile(join(dir, "descriptions.json"), "utf8"),
-    );
+    const saved = JSON.parse(await readFile(join(dir, "parts.json"), "utf8"));
     expect(Object.values(saved).length).toBeGreaterThan(0);
     expect(Object.values(saved)).toEqual(
       Object.values(saved).map(() => "Опис."),
@@ -60,7 +57,7 @@ describe("translateBook", () => {
     const { opts } = await setup();
     const { run } = fakeRun();
     const failing = vi.fn(async (prompt: string, input: string) => {
-      if (prompt.endsWith("description-prompt.md")) throw new Error("boom");
+      if (prompt.endsWith("part-prompt.md")) throw new Error("boom");
       return run(prompt, input);
     });
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -80,7 +77,7 @@ describe("translateBook", () => {
     expect(progress.at(-1)).toMatchObject({ done: 2, total: 2 });
     const files = await readdir(join(dir, "chunks"));
     expect(files.sort()).toEqual(
-      ["0001.md", "0001.uk.md", "0002.md", "0002.uk.md"].sort(),
+      ["0001-one.md", "0001-one.uk.md", "0002-two.md", "0002-two.uk.md"].sort(),
     );
     for (const file of ["source.md", "glossary.json", "report.json"])
       await expect(readFile(join(dir, file), "utf8")).resolves.toBeTruthy();
@@ -180,7 +177,7 @@ describe("translateBook", () => {
     expect(result.book.chapters).toHaveLength(2);
     expect(result.report).toEqual({ fixed: 0, problems: 0, unchecked: 1 });
     expect(calls.filter((c) => isFix(c))).toEqual([]);
-    const saved = await readFile(join(dir, "chunks", "0001.uk.md"), "utf8");
+    const saved = await readFile(join(dir, "chunks", "0001-one.uk.md"), "utf8");
     expect(saved).toMatch(/^# Розділ/);
     const report = JSON.parse(
       await readFile(join(dir, "report.json"), "utf8"),
@@ -213,7 +210,7 @@ describe("translateBook", () => {
     expect(checked).toHaveLength(1);
     expect(isFirstChunk(checked[0] ?? "")).toBe(true);
     expect(result.report).toEqual({ fixed: 0, problems: 0, unchecked: 0 });
-    expect(await readFile(join(dir, "chunks", "0001.uk.md"), "utf8")).toBe(
+    expect(await readFile(join(dir, "chunks", "0001-one.uk.md"), "utf8")).toBe(
       "# Перевірено",
     );
     expect(
@@ -342,7 +339,7 @@ describe("translateBook", () => {
       apostrophe,
     );
     await translateBook(book, { ...opts, run });
-    for (const name of ["0001.uk.md", "0002.uk.md"])
+    for (const name of ["0001-one.uk.md", "0002-two.uk.md"])
       expect(await readFile(join(dir, "chunks", name), "utf8")).toContain(
         "Пʼять",
       );

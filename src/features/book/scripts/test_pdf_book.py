@@ -26,7 +26,7 @@ def test_bookmarks_leaves_only_and_front_matter_dropped() -> None:
     assert "PART I" not in chapters[0].paragraphs, "a part page ends the chapter before it and is not read"
 
 
-def test_nested_bookmark_text_opens_its_first_child() -> None:
+def test_nested_bookmarks_keep_their_levels() -> None:
     marks = [Bookmark(1, "3. Three", 1), Bookmark(2, "3.1 First", 2), Bookmark(2, "3.2 Second", 3), Bookmark(1, "4", 4)]
     items = [
         Item(1, "THREE", True),
@@ -36,8 +36,15 @@ def test_nested_bookmark_text_opens_its_first_child() -> None:
         Item(4, LONG, False),
     ]
     chapters = split_book(marks, items)
-    assert [c.title for c in chapters] == ["3.1 First", "3.2 Second", "4"]
-    assert chapters[0].paragraphs[:2] == ["THREE", "opening " + LONG], "the chapter's opening text is not lost"
+    assert [(c.title, c.level) for c in chapters] == [("3. Three", 1), ("3.1 First", 2), ("3.2 Second", 2), ("4", 1)]
+    assert chapters[0].paragraphs == ["THREE", "opening " + LONG]
+
+
+def test_short_part_page_moves_its_children_up_a_level() -> None:
+    marks = [Bookmark(1, "Intro", 1), Bookmark(1, "Part I", 2), Bookmark(2, "1. One", 3), Bookmark(2, "2. Two", 4)]
+    items = [Item(1, LONG, False), Item(2, "PART I", True), Item(3, LONG, False), Item(4, LONG, False)]
+    chapters = split_book(marks, items)
+    assert [(c.title, c.level) for c in chapters] == [("Intro", 1), ("1. One", 1), ("2. Two", 1)]
 
 
 def test_shared_page_splits_at_title() -> None:
@@ -91,3 +98,8 @@ def test_to_markdown_quotes_and_escapes() -> None:
     md = to_markdown('Part 1: "Go"', None, [Chapter("A: b", ["#1 rule", "text"])])
     assert md.startswith('---\ntitle: "Part 1: \\"Go\\""\n---\n')
     assert "\n# A: b\n\n\\#1 rule\n\ntext\n" in md
+
+
+def test_to_markdown_writes_levels() -> None:
+    md = to_markdown("T", None, [Chapter("A", ["x"]), Chapter("B", ["y"], 2)])
+    assert "\n# A\n\nx\n\n## B\n\ny\n" in md

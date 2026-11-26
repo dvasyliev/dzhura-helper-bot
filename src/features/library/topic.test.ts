@@ -107,6 +107,27 @@ describe("syncTopic", () => {
     });
   });
 
+  it("uploads an audio again when only its title changed", async () => {
+    const state: LibraryState = {
+      chatId: CHAT,
+      topics: {
+        book: {
+          threadId: 5,
+          messages: [posted("a", 10, audio("a", { title: "Book — a" }))],
+          tooBig: {},
+        },
+      },
+    };
+    await sync(state, [audio("a")]);
+
+    expect(t.api.editMessageCaption).not.toHaveBeenCalled();
+    expect(t.api.editMessageMedia).toHaveBeenCalledWith(
+      CHAT,
+      10,
+      expect.objectContaining({ type: "audio", title: "a" }),
+    );
+  });
+
   it("re-sends the tail by file_id", async () => {
     const a = audio("a");
     const c = audio("c");

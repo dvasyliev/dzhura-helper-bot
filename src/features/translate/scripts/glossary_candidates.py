@@ -61,13 +61,16 @@ class Occurrence:
     part: bool = False
 
 
+HEADING = re.compile(r"#{1,3} ")
+
+
 def read_book(path: Path) -> Book:
-    """book.md: YAML front matter with a quoted `title`, a `# ` line per chapter, one line per paragraph."""
+    """book.md: YAML front matter with a quoted `title`, a `#`, `##` or `###` line per chapter, one line per paragraph."""
     text = path.read_text(encoding="utf-8")
     front = re.match(r"---\n(.*?)\n---\n", text, re.DOTALL)
     title = re.search(r"^title: (.*)$", front.group(1), re.MULTILINE) if front else None
     body = text[front.end() if front else 0 :]
-    paragraphs = [line.removeprefix("\\") for line in body.splitlines() if line.strip() and not line.startswith("# ")]
+    paragraphs = [line.removeprefix("\\") for line in body.splitlines() if line.strip() and not HEADING.match(line)]
     return Book(title=json.loads(title.group(1)) if title else path.stem, paragraphs=paragraphs)
 
 

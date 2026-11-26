@@ -1,12 +1,16 @@
 import JSZip from "jszip";
-import { parse } from "node-html-parser";
+import { parse, type HTMLElement } from "node-html-parser";
 import path from "node:path/posix";
 
 export type Book = {
   title: string;
   author?: string;
-  chapters: { title: string; text: string }[];
+  /** `level` is 1 for a top-level chapter, 2 and 3 for its sections; missing when the book has no nesting. */
+  chapters: { title: string; text: string; level?: number }[];
 };
+
+/** book.md has `#`, `##` and `###` chapters; deeper ones count as `###`. */
+export const MAX_LEVEL = 3;
 
 /** Spine items with less text than this are treated as covers, copyright pages and so on. */
 const MIN_CHAPTER_CHARS = 200;
@@ -69,13 +73,19 @@ export async function parseEpub(
 
   const chapters: Book["chapters"] = [];
   let carried: string[] = []; // a short titled section («Частина друга») is read at the start of the next chapter
+  const dropped: number[] = []; // levels of the short titled sections above; their sections move up a level
   for (const href of spine) {
     const html = await read(href);
     const entries = toc.filter((e) => e.file === href);
     for (const section of sections(html, entries)) {
+      if (section.level)
+        while ((dropped.at(-1) ?? 0) >= section.level) dropped.pop();
       const lines = [...carried, ...section.lines];
       if (lines.join("\n").length < MIN_CHAPTER_CHARS) {
-        if (section.title) carried = lines;
+        if (section.title) {
+          carried = lines;
+          if (section.level) dropped.push(section.level);
+        }
         continue;
       }
       carried = [];
@@ -85,9 +95,19 @@ export async function parseEpub(
           : undefined;
       const title =
         section.title || firstLine || `Розділ ${chapters.length + 1}`;
-      chapters.push({ title: clean(title), text: lines.join("\n") });
+      const level = section.level
+        ? section.level - dropped.length
+        : (chapters.at(-1)?.level ?? 1);
+      chapters.push({
+        title: clean(title),
+        text: lines.join("\n"),
+        level,
+      });
     }
   }
+  // A flat table of contents leaves the levels out, so the chapters are told apart by their titles later.
+  if (chapters.every((c) => c.level === 1))
+    for (const c of chapters) delete c.level;
   return {
     title: clean(bookTitle),
     author: meta("creator") || undefined,
@@ -95,21 +115,27 @@ export async function parseEpub(
   };
 }
 
-type TocEntry = { file: string; anchor: string; title: string };
+type TocEntry = {
+  file: string;
+  anchor: string;
+  title: string;
+  level: number;
+};
 
-/** Table of contents in reading order, from nav.xhtml (EPUB 3) or toc.ncx (EPUB 2). */
+/** Table of contents in reading order with each entry's nesting level, from nav.xhtml (EPUB 3) or toc.ncx (EPUB 2). */
 async function readToc(
   items: { href: string; type: string; props: string }[],
   read: (file: string) => Promise<string>,
 ): Promise<TocEntry[]> {
   const toc: TocEntry[] = [];
-  const add = (base: string, href: string, title: string) => {
+  const add = (base: string, href: string, title: string, level: number) => {
     const [file, anchor = ""] = decodeURIComponent(href).split("#");
     if (title.trim())
       toc.push({
         file: path.join(path.dirname(base), file),
         anchor,
         title: title.trim(),
+        level: Math.min(level, MAX_LEVEL),
       });
   };
 
@@ -121,18 +147,38 @@ async function readToc(
         .querySelectorAll("nav")
         .find((n) => n.getAttribute("epub:type") === "toc") ?? root;
     for (const a of tocNav.querySelectorAll("a[href]"))
-      add(nav.href, a.getAttribute("href")!, a.text);
+      add(nav.href, a.getAttribute("href")!, a.text, listDepth(a, tocNav));
     if (toc.length) return toc;
   }
 
   const ncx = items.find((i) => i.type === "application/x-dtbncx+xml");
   if (ncx) {
     const xml = await read(ncx.href);
-    const point =
-      /<navPoint\b[\s\S]*?<text>([\s\S]*?)<\/text>[\s\S]*?<content\b[^>]*\bsrc="([^"]+)"/gi;
-    for (const m of xml.matchAll(point)) add(ncx.href, m[2], decode(m[1]));
+    // Entries are in document order; a navPoint inside another is its section.
+    const token =
+      /<navPoint\b|<\/navPoint>|<text>([\s\S]*?)<\/text>|<content\b[^>]*\bsrc="([^"]+)"/gi;
+    const open: { title?: string }[] = [];
+    for (const m of xml.matchAll(token)) {
+      if (m[0].toLowerCase() === "<navpoint") open.push({});
+      else if (m[0].toLowerCase() === "</navpoint>") open.pop();
+      else if (m[1] !== undefined) {
+        const point = open.at(-1);
+        if (point && point.title === undefined) point.title = decode(m[1]);
+      } else if (m[2] !== undefined) {
+        const title = open.at(-1)?.title;
+        if (title !== undefined) add(ncx.href, m[2], title, open.length);
+      }
+    }
   }
   return toc;
+}
+
+/** How many lists `a` sits in, up to `root`: 1 for a top-level entry. */
+function listDepth(a: HTMLElement, root: HTMLElement): number {
+  let depth = 0;
+  for (let node = a.parentNode; node && node !== root; node = node.parentNode)
+    if (node.rawTagName?.toLowerCase() === "ol") depth += 1;
+  return Math.max(depth, 1);
 }
 
 const MARK = "\u0001";
@@ -145,7 +191,7 @@ const MARK = "\u0001";
 function sections(
   html: string,
   entries: TocEntry[],
-): { title?: string; lines: string[] }[] {
+): { title?: string; level?: number; lines: string[] }[] {
   const marks: { at: number; entry: number }[] = [];
   entries.forEach((e, entry) => {
     const at = e.anchor
@@ -159,13 +205,14 @@ function sections(
     html = `${html.slice(0, at)}<p>${MARK}${entry}</p>${html.slice(at)}`;
 
   const first = entries.find((_, i) => !marks.some((m) => m.entry === i));
-  const result: { title?: string; lines: string[] }[] = [
-    { title: first?.title, lines: [] },
+  const result: { title?: string; level?: number; lines: string[] }[] = [
+    { title: first?.title, level: first?.level, lines: [] },
   ];
   for (const line of htmlToText(html).split("\n")) {
-    if (line.startsWith(MARK))
-      result.push({ title: entries[Number(line.slice(1))].title, lines: [] });
-    else result.at(-1)!.lines.push(line);
+    if (line.startsWith(MARK)) {
+      const entry = entries[Number(line.slice(1))];
+      result.push({ title: entry.title, level: entry.level, lines: [] });
+    } else result.at(-1)!.lines.push(line);
   }
   return result;
 }

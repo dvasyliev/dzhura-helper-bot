@@ -14,7 +14,13 @@ import {
   type Problem,
   type Term,
 } from "./check.ts";
-import { assemble, paragraphs, splitChunks, type Chunk } from "./chunks.ts";
+import {
+  assemble,
+  chunkFileName,
+  paragraphs,
+  splitChunks,
+  type Chunk,
+} from "./chunks.ts";
 import {
   applyParagraphFix,
   fixInput,
@@ -22,7 +28,7 @@ import {
   paragraphFixInput,
   problemParagraphs,
 } from "./fix.ts";
-import { describeAll } from "../audiobook/descriptions.ts";
+import { describeAllParts, partsOf } from "../audiobook/parts.ts";
 import { chapters } from "../audiobook/library.ts";
 import { LimitError, runClaude, type Usage } from "./claude.ts";
 import { LANGUAGE, langFile, termMatch, type TermMatch } from "./lang.ts";
@@ -364,8 +370,9 @@ export async function translateBook(
   const translateChunk = async (index: number): Promise<boolean> => {
     const chunk = chunks[index]!;
     const name = String(index + 1).padStart(4, "0");
-    const chunkFile = join(dir, "chunks", `${name}.md`);
-    const ukFile = join(dir, "chunks", `${name}.uk.md`);
+    const file = chunkFileName(chunks, index);
+    const chunkFile = join(dir, "chunks", `${file}.md`);
+    const ukFile = join(dir, "chunks", `${file}.uk.md`);
     await writeFile(chunkFile, chunk.text);
     const done = await readIfExists(ukFile);
     const recheck = unchecked(report.find((r) => r.chunk === name));
@@ -424,8 +431,8 @@ export async function translateBook(
   const epub = (await pandoc(md, epubFile, opts.cover)) ? epubFile : undefined;
 
   const result = parseMarkdown(text);
-  // A failure here never fails the translation: a track without a description just has no caption.
-  await describeAll(dir, result.title, chapters(result), {
+  // A failure here never fails the translation: a part without a description just shows none.
+  await describeAllParts(dir, partsOf(chapters(result)), {
     run,
     onUsage: addUsage,
   }).catch((error) => console.error("Descriptions failed:", error));

@@ -10,7 +10,13 @@ import {
   safeFilename,
   translationFolder,
 } from "../audiobook/text.ts";
-import { captionOf, readDescriptions } from "../audiobook/descriptions.ts";
+import {
+  partMessage,
+  partsOf,
+  readParts,
+  partKey,
+  audioTitle,
+} from "../audiobook/parts.ts";
 import { bookCaption } from "../book/caption.ts";
 import type { Book } from "../book/epub.ts";
 import { readInfo } from "../book/info.ts";
@@ -188,18 +194,32 @@ export async function bookItems(
       kind: "text",
       text: `🎧 ${bold(escape(voice.name))}`,
     });
-    const descriptions = await readDescriptions(voice.root);
+    const descriptions = await readParts(voice.root);
+    const files = new Map<string, string[]>();
     for (const file of voice.files) {
-      const item = await fileItem(
-        `voice:${voice.name}/${file}`,
-        "audio",
-        path.join(voice.dir, file),
-        {
-          title: file.replace(/\.mp3$/, ""),
-          caption: captionOf(descriptions, file),
-        },
-      );
-      if (item) items.push(item);
+      const name = chapterPart(file)!.chapter;
+      files.set(name, [...(files.get(name) ?? []), file]);
+    }
+    for (const part of partsOf(chapters(voice.book))) {
+      const voicedTracks = part.tracks.filter((t) => files.has(t.name));
+      if (!voicedTracks.length) continue;
+      items.push({
+        key: `part:${voice.name}/${part.number}`,
+        kind: "text",
+        text: partMessage(part, descriptions[partKey(part)]),
+      });
+      for (const track of voicedTracks)
+        for (const file of files.get(track.name)!) {
+          const item = await fileItem(
+            `voice:${voice.name}/${file}`,
+            "audio",
+            path.join(voice.dir, file),
+            {
+              title: audioTitle(track, file),
+            },
+          );
+          if (item) items.push(item);
+        }
     }
   }
   return items;

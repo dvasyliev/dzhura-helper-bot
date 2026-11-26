@@ -39,7 +39,13 @@ export type Posted = {
 /** A string that changes when the message content must be edited. */
 export function version(item: Item): string {
   if (item.kind === "text") return `${item.text}\n${item.button?.data ?? ""}`;
-  return `${item.size}:${item.mtime}:${item.caption ?? ""}`;
+  return `${fileVersion(item)}${item.caption ?? ""}`;
+}
+
+/** The part of a file's version that changes when the file must be sent again: its content and audio title. */
+export function fileVersion(item: FileItem): string {
+  const title = item.title === undefined ? "" : `${item.title}\n`;
+  return `${item.size}:${item.mtime}:${title}`;
 }
 
 /**

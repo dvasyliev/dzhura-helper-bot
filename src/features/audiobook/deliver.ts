@@ -2,21 +2,29 @@ import { InputFile, InputMediaBuilder, type Api } from "grammy";
 import path from "node:path";
 import type { Book } from "../book/epub.ts";
 import { syncBook } from "../library/books.ts";
-import { albumAt, MAX_ALBUM, type Synced } from "../library/topic.ts";
-import type { Chapter, ShelfBook } from "./library.ts";
+import { albumAt, type Synced } from "../library/topic.ts";
+import {
+  chapters as bookChapters,
+  type Chapter,
+  type ShelfBook,
+} from "./library.ts";
 import { leftByPace, leftText } from "../../eta.ts";
 import { HTML, bold, code, escape, problem } from "../../format.ts";
 import {
-  captionOf,
-  describeChapters,
-  readDescriptions,
-} from "./descriptions.ts";
+  describeParts,
+  partMessage,
+  partsOf,
+  readParts,
+  partKey,
+  audioTitle,
+  type Part,
+} from "./parts.ts";
 import { BOOKS_DIR, bookPaths, voicingMinutes } from "./text.ts";
 import { voiceChapters, type Voice } from "./voice.ts";
 
 /**
- * Voices `todo` in reading order. The first chapter goes out at once, so listening can start; then every MAX_ALBUM
- * chapters as one album, and the rest at the end, also after a failure. With a library group "going out" syncs the
+ * Voices `todo` in reading order. The first chapter goes out at once, so listening can start; then each part (about an hour, one album) once all its
+ * chapters of this run are voiced, and the rest at the end, also after a failure. With a library group "going out" syncs the
  * book's topic and the owner gets `Done → <link>` once; without one the files are sent here. A failed chapter stops
  * the book. With `progress` (chapters done before and in all) one status message counts the chapters as they finish.
  */
@@ -38,34 +46,51 @@ export async function voiceBook(
       mode === "new" && voice.language === "uk" ? paths.report : undefined,
     chapters: todo,
   };
-  /** Files voiced and not sent yet, and how many chapters they are. */
-  const waiting: string[] = [];
-  let chaptersWaiting = 0;
-  /** Names of those chapters, whose descriptions the audio waits for. */
-  const namesWaiting: string[] = [];
+  /** Voiced and not sent yet. */
+  const waiting: { chapter: Chapter; files: string[] }[] = [];
   const dir = `${BOOKS_DIR}/${folder}`;
-  // Made in the background while the chapters are voiced; a chapter's audio goes out with its description if ready.
-  const described = describeChapters(dir, book.title, todo);
+  const parts = partsOf(bookChapters(book));
+  const partOf = (chapter: Chapter) =>
+    parts.find((p) => p.tracks.some((t) => t.index === chapter.index))!;
+  /** The last chapter of each part in this run: its part goes out after it. */
+  const lastInPart = new Set(
+    parts.flatMap((p) => {
+      const last = p.tracks.filter((t) =>
+        todo.some((c) => c.index === t.index),
+      );
+      return last.length ? [last.at(-1)!.index] : [];
+    }),
+  );
+  // Made in the background while the chapters are voiced; a part goes out with its description if ready.
+  const described = describeParts(
+    dir,
+    parts.filter((p) =>
+      p.tracks.some((t) => todo.some((c) => c.index === t.index)),
+    ),
+  );
+  /** Parts whose message is already in the private chat. */
+  const announced = new Set<number>();
   let sentAny = false;
   let linked = false;
   const status =
     progress &&
     (await statusMessage(api, chatId, book, voice, todo, mode, progress));
   const send = async () => {
-    if (!chaptersWaiting) return;
-    const files = waiting.splice(0);
-    chaptersWaiting = 0;
-    const names = namesWaiting.splice(0);
+    const batch = waiting.splice(0);
+    if (!batch.length) return;
     sentAny = true;
-    await Promise.all(names.map(described));
+    const touched = new Set(batch.map((w) => partOf(w.chapter)));
+    await Promise.all([...touched].map(described));
     const synced = await syncBook(api, folder);
     if (!synced)
-      await sendAudio(
+      await sendParts(
         api,
         chatId,
-        files,
+        batch,
+        partOf,
+        announced,
         paths.audioDir,
-        await readDescriptions(dir),
+        dir,
       );
     else if (!linked) linked = await sendDone(api, chatId, synced);
   };
@@ -86,10 +111,8 @@ export async function voiceBook(
       if (event.error)
         throw new Error(`chapter «${chapter.name}»: ${event.error}`);
       await status?.next(chapter.text.length);
-      waiting.push(...(event.files ?? []));
-      chaptersWaiting++;
-      namesWaiting.push(chapter.name);
-      if (!sentAny || chaptersWaiting >= MAX_ALBUM) await send();
+      waiting.push({ chapter, files: event.files ?? [] });
+      if (!sentAny || lastInPart.has(chapter.index)) await send();
     }
   } catch (error) {
     // The chapter's error is the one to report; a failed send after it must not replace it.
@@ -158,23 +181,51 @@ async function sendDone(
   return true;
 }
 
-/** Chapter files as albums of up to MAX_ALBUM; a lone file as plain audio. Titled «001 Chapter», no book name. */
+/**
+ * Sends the voiced chapters here, part by part: the part's message once (the first time one of its chapters goes
+ * out), then its audio as albums of up to MAX_ALBUM, a lone file as plain audio. Titled «001. Chapter», no book name,
+ * and without a caption.
+ */
+async function sendParts(
+  api: Api,
+  chatId: number,
+  batch: { chapter: Chapter; files: string[] }[],
+  partOf: (chapter: Chapter) => Part,
+  announced: Set<number>,
+  audioDir: string,
+  dir: string,
+): Promise<void> {
+  const descriptions = await readParts(dir);
+  const groups = new Map<Part, typeof batch>();
+  for (const item of batch) {
+    const part = partOf(item.chapter);
+    groups.set(part, [...(groups.get(part) ?? []), item]);
+  }
+  for (const [part, items] of groups) {
+    if (!announced.has(part.number)) {
+      announced.add(part.number);
+      await notify(api, chatId, partMessage(part, descriptions[partKey(part)]));
+    }
+    const audio = items.flatMap(({ chapter, files }) =>
+      files.map((file) => ({ kind: "audio", file, chapter })),
+    );
+    await sendAudio(api, chatId, audio, audioDir);
+  }
+}
+
 async function sendAudio(
   api: Api,
   chatId: number,
-  files: string[],
+  audio: { kind: string; file: string; chapter: Chapter }[],
   audioDir: string,
-  descriptions: Parameters<typeof captionOf>[0],
 ): Promise<void> {
-  const audio = files.map((file) => ({ kind: "audio", file }));
   for (let i = 0; i < audio.length;) {
-    const album = albumAt(audio, i).map(({ file }) => {
-      const title = path.basename(file, ".mp3");
-      const caption = captionOf(descriptions, file);
+    const album = albumAt(audio, i).map(({ file, chapter }) => {
+      const title = audioTitle(chapter, file);
       return {
         title,
-        input: new InputFile(file, `${title}.mp3`),
-        extra: { title, ...(caption ? { ...HTML, caption } : {}) },
+        input: new InputFile(file, `${path.basename(file, ".mp3")}.mp3`),
+        extra: { title },
       };
     });
     i += album.length;
