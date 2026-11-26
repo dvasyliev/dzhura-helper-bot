@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#4A5BD4"/>
+  <path d="M146 136 h220 a52 52 0 0 1 52 52 v118 a52 52 0 0 1 -52 52 h-128 l-62 50 v-50 h-30 a52 52 0 0 1 -52 -52 v-118 a52 52 0 0 1 52 -52 z" fill="#fff"/>
+  <text x="256" y="276" text-anchor="middle" font-family="-apple-system, Helvetica, Arial, sans-serif" font-weight="800" font-size="78" fill="#4A5BD4">Dzhura</text>
+  <path d="M408 76 l10 24 24 10 -24 10 -10 24 -10 -24 -24 -10 24 -10 z" fill="#fff"/>
+</svg>

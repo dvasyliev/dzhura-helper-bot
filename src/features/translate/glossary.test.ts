@@ -27,7 +27,7 @@ describe("candidates", () => {
     const found = await candidates(file, "ru");
     expect(found.map((c) => c.term)).toEqual(["Буря", "Тарас"]);
     expect(found[1]?.count).toBe(2);
-  });
+  }, 60_000); // A cold Python start (CI) loads its models for longer than the default 5 s.
 });
 
 const fogg: Candidate[] = [

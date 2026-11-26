@@ -104,13 +104,7 @@ The group is a forum (Topics on) that only the bot writes in. It mirrors `data/`
 - **`/publish`** puts everything already in `data/` into the group; run it again and it adds only what is missing.
 - **Fallback**: with no group, or if the group breaks (bot removed, rights lost), files come to the private chat as before and the bot says why, once. A topic deleted by hand comes back with /publish (which checks every topic still exists) or when a sync next sends to it. A single message deleted by hand is replaced when its file changes, or when a later change makes the bot send the messages after it again.
 
-Setup, in order:
-
-1. Create a group and turn on Topics.
-2. Add the bot to it.
-3. Make it an admin with "Manage topics", "Delete messages" and "Pin messages".
-4. The bot answers in the private chat that the group is saved, or what rights it still needs.
-5. Send `/publish` in the private chat.
+Setup: [SETUP.md, step 6](../SETUP.md#6-library-group-optional).
 
 Tests: `npx vitest run src/features/library`.
 

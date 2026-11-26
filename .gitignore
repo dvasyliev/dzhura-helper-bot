@@ -5,6 +5,7 @@ data/
 docs/superpowers/
 .venv
 __pycache__/
+.DS_Store
 
 # Added by the codebase-harness plugin
 /.coverage

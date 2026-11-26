@@ -29,7 +29,8 @@ The agent does not type passwords or codes from your phone, and it cannot open `
 3. [Audiobook](#3-audiobook): Python, stress and voice models.
 4. [Karaoke](#4-karaoke): ffmpeg, deno, models.
 5. [YouTube](#5-youtube-for-karaoke): Google Cloud, OAuth, playlist.
-6. [Run and check](#6-run-and-check).
+6. [Library group](#6-library-group-optional): a Telegram group with a topic per book.
+7. [Run and check](#7-run-and-check).
 
 Disk space: about 6 GB for models, plus room for books and videos in `data/`.
 
@@ -281,7 +282,21 @@ YouTube checks unlisted videos for other people's music too. A Content ID claim 
 
 ---
 
-## 6. Run and check
+## 6. Library group (optional)
+
+The bot can post everything it makes into a Telegram group: a topic per book and one for karaoke (what it looks like: [README](README.md#library-group)). Without a group, files come to the private chat. No `.env` value is needed: the bot saves the group by itself.
+
+1. In Telegram, create a group and turn on **Topics** in its settings.
+2. Add the bot to the group.
+3. Make the bot an admin with **Manage topics**, **Delete messages** and **Pin messages**.
+4. The bot replies in the private chat that the group is saved, or which rights it still lacks.
+5. Send `/publish` in the private chat: the bot posts everything already in `data/`. Later results go to the group by themselves.
+
+To share the library, invite people to the group. To keep it tidy, turn off **Send messages** for members in the group's **Permissions**: they can still listen and download. The bot follows only your commands and button presses, even in the group.
+
+---
+
+## 7. Run and check
 
 ```bash
 caffeinate -i npm start
@@ -294,6 +309,7 @@ Check in Telegram:
 2. Audiobook: send a Ukrainian or English EPUB; the bot shows an estimate and the voice buttons of its language.
 3. Karaoke: send a YouTube clip link; the bot asks which version to make.
 4. YouTube: after a karaoke, the bot sends a sign-in code (the first time), then the video link.
+5. Library group: after a job, the bot replies `Done → <link>` and the file is in the group's topic.
 
 ### Full `.env`
 
@@ -314,6 +330,7 @@ YOUTUBE_PLAYLIST_ID=
 |---|---|
 | Books, audio, karaoke | `data/` in the project |
 | YouTube sign-in | `data/youtube.json` |
+| Library group (ids of the group, topics and messages) | `data/library.json` |
 | Python libraries | `.venv/` in the project |
 | Voice model, Whisper | `~/.cache/huggingface/hub` |
 | Stress model | `~/.cache/accentuk` |

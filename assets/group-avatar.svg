@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#4A5BD4"/>
+  <!-- headphones -->
+  <path d="M128 282 v-28 a128 128 0 0 1 256 0 v28" fill="none" stroke="#fff" stroke-width="24" stroke-linecap="round"/>
+  <rect x="100" y="262" width="56" height="96" rx="22" fill="#fff"/>
+  <rect x="356" y="262" width="56" height="96" rx="22" fill="#fff"/>
+  <!-- open book -->
+  <path d="M256 238 C222 214 190 208 168 212 V382 C194 378 226 384 256 404 Z" fill="#fff"/>
+  <path d="M256 238 C290 214 322 208 344 212 V382 C318 378 286 384 256 404 Z" fill="#fff"/>
+  <path d="M188 250 C206 248 224 252 240 262 M188 284 C206 282 224 286 240 296 M188 318 C206 316 224 320 240 330" stroke="#4A5BD4" stroke-opacity=".45" stroke-width="7" stroke-linecap="round" fill="none"/>
+  <path d="M256 240 V402" stroke="#4A5BD4" stroke-opacity=".35" stroke-width="4"/>
+  <!-- music note on the right page -->
+  <path d="M300 258 v70" stroke="#4A5BD4" stroke-width="10" stroke-linecap="round"/>
+  <path d="M300 258 l24 -8 v20 l-24 8 z" fill="#4A5BD4"/>
+  <ellipse cx="288" cy="330" rx="16" ry="12" fill="#4A5BD4"/>
+</svg>

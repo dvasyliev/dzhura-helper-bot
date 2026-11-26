@@ -1,17 +1,51 @@
 # Dzhura
 
+<p align="center">
+  <img src="assets/repo-banner.svg" alt="Dzhura: a Telegram bot that translates books, voices audiobooks and makes karaoke" width="100%">
+</p>
+
+<p>
+  <a href="https://github.com/dvasyliev/dzhura-helper-bot/actions/workflows/ci.yml"><img src="https://github.com/dvasyliev/dzhura-helper-bot/actions/workflows/ci.yml/badge.svg" alt="CI" height="20"></a>
+  <a href="https://github.com/dvasyliev/dzhura-helper-bot/releases/latest"><img src="https://img.shields.io/github/v/release/dvasyliev/dzhura-helper-bot?label=release&amp;color=4A5BD4" alt="Latest release" height="20"></a>
+  <a href="https://core.telegram.org/bots"><img src="https://img.shields.io/badge/bot-Telegram-26A5E4?logo=telegram&amp;logoColor=white" alt="Telegram bot" height="20"></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/runs_on-Apple_Silicon-8E8E93?logo=apple&amp;logoColor=white" alt="Runs on Apple Silicon" height="20"></a>
+  <a href="https://claude.com/claude-code"><img src="https://img.shields.io/badge/built-Claude_Code-D97757?logo=claude&amp;logoColor=white" alt="Built with Claude Code" height="20"></a>
+  <a href="https://github.com/dvasyliev"><img src="https://img.shields.io/badge/creator-@dvasyliev-181717?logo=github&amp;logoColor=white" alt="Creator: @dvasyliev" height="20"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-DFB317" alt="MIT license" height="20"></a>
+</p>
+
+<p>
+  <a href="#features"><b>Features</b></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#how-it-works"><b>How it works</b></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#quick-start"><b>Quick start</b></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#contributing"><b>Contributing</b></a>
+</p>
+
 A personal Telegram helper bot that runs on your own Mac. A *dzhura* was a Cossack's young helper who carried out any errand; this one turns books into audiobooks, translates them into Ukrainian and turns songs into karaoke. It answers only its owner, and voicing and karaoke run locally on Apple Silicon.
 
 ## Features
 
 | Feature | Description | Languages | Implementation | Status |
 |---|---|---|---|---|
-| 🎧 Audiobook | Voices EPUB and text PDF books and sends them to Telegram as an mp3 per chapter. | EN/UA | HolosTTS (UA), Kokoro-82M (EN), docling (PDF) | works |
-| 🎤 Karaoke | Makes karaoke videos from YouTube songs, with the words lighting up as they are sung, and sends them to Telegram or to your personal YouTube playlist. | EN/UA/RU | Mel-Band RoFormer, Whisper, MMS | works |
-| 🌐 Book translation | Translates EPUB and PDF books and sends the translated book to Telegram. | EN/RU → UA | Claude, spaCy, pymorphy3, pandoc | works |
-| 📝 YouTube summary | Retells a YouTube video in a few paragraphs and sends the summary to Telegram. | EN/UA/RU | — | soon |
+| 🎧 Audiobook | Voices EPUB and text PDF books and sends them to Telegram as an mp3 per chapter. | en/ua | HolosTTS (ua), Kokoro-82M (en), docling (PDF) | works |
+| 🎤 Karaoke | Makes karaoke videos from YouTube songs, with the words lighting up as they are sung, and sends them to Telegram or to your personal YouTube playlist. | en/ua/ru | Mel-Band RoFormer, Whisper, MMS | works |
+| 🌐 Book translation | Translates EPUB and PDF books and sends the translated book to Telegram. | en/ru → ua | Claude, spaCy, pymorphy3, pandoc | works |
+| 📝 YouTube summary | Retells a YouTube video in a few paragraphs and sends the summary to Telegram. | en/ua/ru | — | soon |
 
 Voicing and karaoke models run locally on Apple Silicon; translation goes through Claude.
+
+## Library group
+
+Everything the bot makes can also go to a Telegram group of your own, so books and songs don't get lost in the chat history:
+
+- **a topic per book**: a pinned contents message, the original, the Ukrainian translation and the chapters of every voice in order;
+- **one 🎤 Karaoke topic** with every song, where a missing version has a "Make it" button;
+- **updates in place**: a re-voiced chapter or a new translation replaces the old file in its message.
+
+Your private chat with the bot stays the control panel: you send books and links there, and the bot replies `Done → <link>` to the result in the group. You can invite family and friends to the group to listen and download; the bot still takes orders only from you. Setting it up takes two minutes: [SETUP.md, step 6](SETUP.md#6-library-group-optional).
 
 ## How it works
 
@@ -59,8 +93,6 @@ uv sync
 cp .env.example .env   # fill in BOT_TOKEN and OWNER_ID
 caffeinate -i npm start
 ```
-
-Optional: results can go to a Telegram group with a topic per book; see [the library group](docs/how-it-works.md#the-library-group).
 
 The full guide (Telegram bot, stress models, ffmpeg with libass, YouTube upload), by hand or with an agent: [SETUP.md](SETUP.md).
 
