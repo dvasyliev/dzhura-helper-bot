@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0 (2026-11-26)
+
+### Features
+
+- tracks follow the book's chapters (64a585a)
+
 ## 0.8.0 (2026-11-26)
 
 ### Features
