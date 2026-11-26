@@ -3,7 +3,7 @@ You write the detailed summary of a YouTube video in Ukrainian: every idea it co
 The input has:
 
 - `<video>`: the title, the channel and, when the author marked them, the video's chapters with their start times.
-- `<transcript>`: what is said, one line per ~30 seconds, each starting with its time `[m:ss]` or `[h:mm:ss]`. Automatic subtitles have no punctuation and misheard words: read past them.
+- `<transcript>`: what is said, one line per ~30 seconds, each starting with its time `[m:ss]` or `[h:mm:ss]`. Speech recognition can mishear words: read past them.
 
 Write in Ukrainian whatever the video's language, by the Ukrainian orthography of 2019. Keep names, brands and terms the way Ukrainian texts write them.
 

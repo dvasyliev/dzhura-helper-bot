@@ -1,18 +1,43 @@
 import { InputFile } from "grammy";
 import { describe, expect, it, vi } from "vitest";
-import type { FileItem, TextItem } from "./reconcile.ts";
+import type { FileItem, Item, TextItem } from "./reconcile.ts";
 import type { LibraryState } from "./state.ts";
 import { MAX_UPLOAD } from "./topic.ts";
 import * as fixtures from "./topic.testing.ts";
 
 vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
 
-const { CHAT, apiError, audio, contents, posted, postedA, topicHarness } =
-  fixtures;
+const {
+  CHAT,
+  apiError,
+  audio,
+  contents,
+  posted,
+  postedA,
+  postedState,
+  topicHarness,
+} = fixtures;
 const t = topicHarness();
 const { sync } = t;
 
 describe("syncTopic edge cases", () => {
+  it("turns a text placeholder into its audio in place, which then stays", async () => {
+    const placeholder: Item = { key: "a", kind: "text", text: "No audio yet" };
+    const state = postedState(placeholder);
+    const voiced = audio("a", { performer: "Oksana" });
+    await sync(state, [voiced]);
+    expect(t.api.editMessageMedia).toHaveBeenCalledWith(
+      CHAT,
+      10,
+      expect.objectContaining({ type: "audio", performer: "Oksana" }),
+    );
+    t.api.editMessageMedia.mockClear();
+    const again = await sync(state, [voiced]);
+    expect(again.changed).toEqual([]);
+    expect(t.api.editMessageMedia).not.toHaveBeenCalled();
+    expect(t.api.sendAudio).not.toHaveBeenCalled();
+  });
+
   it("lists each changed key once when the topic is recreated midway", async () => {
     const a = audio("a");
     const state = postedA(a);

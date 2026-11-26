@@ -312,7 +312,9 @@ describe("syncBook", () => {
       dirs,
     );
     expect(api.createForumTopic).toHaveBeenCalledTimes(1);
-    expect(api.createForumTopic).toHaveBeenCalledWith(-100, "A — Orig");
+    expect(api.createForumTopic).toHaveBeenCalledWith(-100, "A — Orig", {
+      icon_custom_emoji_id: "5350481781306958339",
+    });
     expect(synced?.changed).toContain("voice:Holos/001 Один.mp3");
   });
 

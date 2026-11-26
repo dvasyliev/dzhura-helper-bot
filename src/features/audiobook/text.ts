@@ -1,6 +1,6 @@
 import { duration } from "../../eta.ts";
 /** Longer titles are cut so file names stay readable and within file system limits. */
-const MAX_NAME_CHARS = 100;
+export const MAX_NAME_CHARS = 100;
 
 /** «001 Розділ I. Риба-молот»: the number keeps files in reading order. Used for text and audio files. */
 export function chapterName(index: number, title: string): string {

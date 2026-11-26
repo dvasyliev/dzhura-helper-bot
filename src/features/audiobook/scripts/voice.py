@@ -1,6 +1,7 @@
 """Voices chapters of a book with the chosen voice's provider: holos (HolosTTS, Ukrainian) or kokoro (Kokoro, English).
 
-Reads a JSON job from stdin:
+Reads a JSON job from stdin («tempo», optional, speeds the audio up: 1.15 is 15% faster; «one_file»: true keeps
+a long chapter in one file):
   {"provider": "holos", "language": "uk", "voice": "Speaker_0", "text_dir": "...", "audio_dir": "...", "dictionary": "...", "report": "... or null",
    "chapters": [{"index": 0, "name": "001 Розділ I. Риба-молот", "text": "..."}, ...]}
 Each chapter's text is saved to <text_dir>/<name>.txt unless that file is already there: a Ukrainian one
@@ -22,6 +23,7 @@ from concurrent.futures import ProcessPoolExecutor
 warnings.filterwarnings("ignore")
 
 from tts import holos, kokoro  # noqa: E402
+from tts.audio import change_tempo  # noqa: E402
 from uk.prepare import apply_dictionary, load_stress, prepare_file, write_report  # noqa: E402
 
 PREPARE_THREADS = "2"
@@ -84,7 +86,12 @@ def main() -> None:
                         prepared = f.read()
                     if ukrainian:  # the dictionary may be edited meanwhile
                         prepared = apply_dictionary(prepared, load_stress(job["dictionary"]))
-                    files = save(voice_chapter(prepared, job["voice"]), job["audio_dir"], chapter["name"])
+                    parts = voice_chapter(prepared, job["voice"])
+                    if job.get("one_file") and len(parts) > 1:
+                        # mp3 frames join as they are; the tempo pass below re-encodes them into one clean file.
+                        parts = [b"".join(parts)]
+                    parts = [change_tempo(p, job.get("tempo", 1.0)) for p in parts]
+                    files = save(parts, job["audio_dir"], chapter["name"])
                     break
                 except Exception as error:
                     if attempt == 2:

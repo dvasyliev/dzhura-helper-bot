@@ -53,3 +53,26 @@ def test_english_text() -> None:
     assert english_text("CHAPTER XII. The Yacht") == "CHAPTER 12. The Yacht"
     assert english_text("Part IV") == "Part 4"
     assert english_text("I said, Chapter I was fine. Louis XIV") == "I said, Chapter 1 was fine. Louis XIV"
+
+
+def mp3_seconds(data: bytes) -> float:
+    """Decoded to 8 kHz 16-bit mono: two bytes per sample."""
+    import subprocess
+
+    pcm = subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", "pipe:0", "-f", "s16le", "-ac", "1", "-ar", "8000", "pipe:1"],
+        input=data,
+        capture_output=True,
+        check=True,
+    ).stdout
+    return len(pcm) / 2 / 8000
+
+
+def test_change_tempo_speeds_up_and_keeps_tempo_one_as_is() -> None:
+    rate = 24000
+    two_seconds = audio.encode([np.sin(np.linspace(0, 2000, 2 * rate)).astype(np.float32) * 0.3], rate)
+    assert audio.change_tempo(two_seconds, 1.0) is two_seconds
+    # An mp3 encoder adds a few dozen ms of padding each time.
+    assert mp3_seconds(audio.change_tempo(two_seconds, 1.25)) == pytest.approx(
+        mp3_seconds(two_seconds) / 1.25, abs=0.15
+    )

@@ -1,4 +1,6 @@
-"""Writes what a YouTube video says to transcript.txt: from its subtitles, or from Whisper when it has none.
+"""Writes what a YouTube video says to transcript.txt: from subtitles made by people, or from Whisper when it has none.
+
+YouTube's automatic subtitles are not used: Whisper hears better and keeps the punctuation.
 
 Reads a JSON job from stdin: {"id": YouTube video id, "dir": folder to work in}.
 Prints {"step": "whisper"} before listening with Whisper, then {"source": "subtitles" | "whisper"}.
@@ -52,28 +54,23 @@ def group_lines(lines: list[tuple[float, str]]) -> list[str]:
     return result
 
 
-def choose_subtitles(language: str | None, manual: dict[str, Any], auto: dict[str, Any]) -> tuple[str, bool] | None:
-    """The subtitle track to take, and whether it is automatic: manual ones in the video's language first, then
-    YouTube's automatic ones in it, then any manual ones."""
+def choose_subtitles(language: str | None, manual: dict[str, Any]) -> str | None:
+    """The subtitle track to take: one in the video's language first, then any. «en-US» matches «en», «en-GB» and the
+    rest."""
     if language:
+        base = language.split("-")[0]
         for lang in manual:
-            if lang == language or lang.startswith(f"{language}-"):
-                return lang, False
-        for lang in (f"{language}-orig", language):
-            if lang in auto:
-                return lang, True
-    if manual:
-        return next(iter(manual)), False
-    return None
+            if lang.split("-")[0] == base:
+                return lang
+    return next(iter(manual), None)
 
 
 def from_subtitles(url: str, work: str) -> list[str] | None:
     with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
         meta = ydl.extract_info(url, download=False) or {}
-    chosen = choose_subtitles(meta.get("language"), meta.get("subtitles") or {}, meta.get("automatic_captions") or {})
-    if not chosen:
+    lang = choose_subtitles(meta.get("language"), meta.get("subtitles") or {})
+    if not lang:
         return None
-    lang, automatic = chosen
     # The typeshed stub types skip_download as str; yt-dlp takes a bool.
     with yt_dlp.YoutubeDL(
         {  # pyright: ignore[reportArgumentType]
@@ -81,8 +78,7 @@ def from_subtitles(url: str, work: str) -> list[str] | None:
             "no_warnings": True,
             "noprogress": True,
             "skip_download": True,
-            "writesubtitles": not automatic,
-            "writeautomaticsub": automatic,
+            "writesubtitles": True,
             "subtitleslangs": [lang],
             "subtitlesformat": "json3",
             "outtmpl": os.path.join(work, "subtitles"),

@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { saveState } from "./state.ts";
-import { setMaking, summaryItems, syncSummaries } from "./summary.ts";
+import {
+  findVideo,
+  newVideoDir,
+  setMaking,
+  summaryItems,
+  syncSummaries,
+  videoFolderName,
+} from "./summary.ts";
 
 vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
 
@@ -15,16 +22,60 @@ async function video(
   at: number,
   levels: string[] = [],
 ) {
-  await mkdir(join(root, id), { recursive: true });
+  const dir = join(root, `Channel - ${id}`);
+  await mkdir(dir, { recursive: true });
   await writeFile(
-    join(root, id, "meta.json"),
-    JSON.stringify({ title, categories: [], chapters: [] }),
+    join(dir, "meta.json"),
+    JSON.stringify({ id, title, categories: [], chapters: [] }),
   );
-  await writeFile(join(root, id, "about.md"), "Про що.\n\nЩо каже.\n");
-  await utimes(join(root, id, "about.md"), at, at);
-  for (const level of levels)
-    await writeFile(join(root, id, `${level}.md`), "x");
+  await writeFile(join(dir, "about.md"), "Про що.\n\nЩо каже.\n");
+  await utimes(join(dir, "about.md"), at, at);
+  for (const level of levels) await writeFile(join(dir, `${level}.md`), "x");
 }
+
+describe("video folders", () => {
+  it("names a folder «Channel - Title», safe as a file name, like the karaoke songs", () => {
+    expect(
+      videoFolderName({
+        title: "AI: the end?",
+        channel: "Lex",
+        categories: [],
+        chapters: [],
+      }),
+    ).toBe("Lex - AI_ the end_");
+    expect(
+      videoFolderName({ title: "...Hidden.", categories: [], chapters: [] }),
+    ).toBe("Hidden");
+    expect(
+      videoFolderName({
+        title: "x".repeat(200),
+        categories: [],
+        chapters: [],
+      }),
+    ).toHaveLength(100);
+  });
+
+  it("makes a video's folder with its id in meta.json, and finds it by that id", async () => {
+    const root = await mkdtemp(join(tmpdir(), "summary-"));
+    const info = {
+      title: "Talk",
+      channel: "Lex",
+      categories: [],
+      chapters: [],
+    };
+    const dir = await newVideoDir("aaaaaaaaaaa", info, root);
+    expect(dir).toBe(join(root, "Lex - Talk"));
+    expect(await findVideo("aaaaaaaaaaa", root)).toEqual({
+      dir,
+      info: { id: "aaaaaaaaaaa", ...info },
+    });
+    expect(await findVideo("bbbbbbbbbbb", root)).toBeUndefined();
+    // Another video with the same name gets its id after it.
+    expect(await newVideoDir("bbbbbbbbbbb", info, root)).toBe(
+      join(root, "Lex - Talk (bbbbbbbbbbb)"),
+    );
+  });
+});
 
 describe("summaryItems", () => {
   it("gives each video its description, then each level's file or a placeholder to make it, oldest first", async () => {
@@ -36,38 +87,85 @@ describe("summaryItems", () => {
     await video(root, "aaaaaaaaaaa", "First", 1000, ["detailed"]);
     await mkdir(join(root, "ccccccccccc")); // not described yet
     const items = await summaryItems(root);
+    const level = (id: string, l: string) => [
+      `${id}/${l}/title`,
+      `${id}/${l}`,
+      `${id}/${l}/audio`,
+    ];
     expect(items.map((i) => i.key)).toEqual([
       "contents",
       "aaaaaaaaaaa/about",
-      "aaaaaaaaaaa/brief",
-      "aaaaaaaaaaa/detailed",
+      ...level("aaaaaaaaaaa", "brief"),
+      ...level("aaaaaaaaaaa", "detailed"),
       "bbbbbbbbbbb/about",
-      "bbbbbbbbbbb/brief",
-      "bbbbbbbbbbb/detailed",
+      ...level("bbbbbbbbbbb", "brief"),
+      ...level("bbbbbbbbbbb", "detailed"),
     ]);
-    expect(items[1]).toEqual({
+    const byKey = (key: string) => items.find((i) => i.key === key);
+    expect(byKey("aaaaaaaaaaa/about")).toEqual({
       key: "aaaaaaaaaaa/about",
       kind: "text",
       text: "📝 <b>First</b>\nhttps://youtu.be/aaaaaaaaaaa\n\nПро що.\n\nЩо каже.",
       preview: "https://i.ytimg.com/vi/aaaaaaaaaaa/maxresdefault.jpg",
     });
-    expect(items[2]).toEqual({
-      key: "aaaaaaaaaaa/brief",
+    expect(byKey("aaaaaaaaaaa/brief/title")).toEqual({
+      key: "aaaaaaaaaaa/brief/title",
       kind: "text",
       text: "📋 <b>Brief summary</b>",
-      buttons: [{ text: "Make it", data: "summary:brief:aaaaaaaaaaa" }],
     });
-    expect(items[3]).toMatchObject({
-      kind: "document",
-      caption: "📖 <b>Detailed summary</b>",
+    expect(byKey("aaaaaaaaaaa/brief")).toEqual({
+      key: "aaaaaaaaaaa/brief",
+      kind: "text",
+      text: "No document yet",
+      buttons: [{ text: "✨ Generate", data: "summary:brief:aaaaaaaaaaa" }],
     });
-    expect(items[5]).toMatchObject({
+    expect(byKey("aaaaaaaaaaa/brief/audio")).toEqual({
+      key: "aaaaaaaaaaa/brief/audio",
+      kind: "text",
+      text: "No audio yet",
+      buttons: [
+        { text: "🎙 Oksana", data: "summary:voice:brief:aaaaaaaaaaa:Oksana" },
+        { text: "🎙 Andrii", data: "summary:voice:brief:aaaaaaaaaaa:Andrii" },
+      ],
+    });
+    expect(byKey("aaaaaaaaaaa/detailed/title")).toMatchObject({
+      text: "📖 <b>Detailed summary</b>",
+    });
+    const doc = byKey("bbbbbbbbbbb/brief");
+    expect(doc).toMatchObject({
       kind: "document",
-      file: join(root, "bbbbbbbbbbb", "brief.md"),
+      file: join(root, "Channel - bbbbbbbbbbb", "brief.md"),
       name: "Second _ talk (стисло).md",
-      caption: "📋 <b>Brief summary</b>",
     });
-    expect(items[6]).toMatchObject({ name: "Second _ talk (детально).md" });
+    expect(doc).not.toHaveProperty("caption");
+    expect(byKey("bbbbbbbbbbb/detailed")).toMatchObject({
+      name: "Second _ talk (детально).md",
+    });
+  });
+
+  it("puts the level's audio in its place once voiced, not while it is written", async () => {
+    const root = await mkdtemp(join(tmpdir(), "summary-"));
+    await video(root, "aaaaaaaaaaa", "First / talk", 1000, [
+      "brief",
+      "detailed",
+    ]);
+    const dir = join(root, "Channel - aaaaaaaaaaa");
+    await writeFile(join(dir, "brief - Oksana.mp3"), "abc");
+    await writeFile(join(dir, "detailed - Andrii.mp3.part"), "abc");
+    const items = await summaryItems(root);
+    const audio = items.find((i) => i.key === "aaaaaaaaaaa/brief/audio");
+    expect(audio).toMatchObject({
+      kind: "audio",
+      file: join(dir, "brief - Oksana.mp3"),
+      name: "First _ talk (стисло).mp3",
+      title: "First / talk (стисло)",
+      performer: "Oksana",
+      size: 3,
+    });
+    expect(audio).not.toHaveProperty("caption");
+    expect(
+      items.find((i) => i.key === "aaaaaaaaaaa/detailed/audio"),
+    ).toMatchObject({ kind: "text", text: "No audio yet" });
   });
 
   it("starts with a pinned contents: each video's title, a link to its description once posted", async () => {
@@ -99,18 +197,27 @@ describe("summaryItems", () => {
     expect(text).not.toContain("• 0 x");
   });
 
-  it("shows a level being made with a clock and no button", async () => {
+  it("shows a document or audio being made without buttons", async () => {
     const root = await mkdtemp(join(tmpdir(), "summary-"));
     await video(root, "aaaaaaaaaaa", "First", 1000);
+    const at = async (key: string) =>
+      (await summaryItems(root)).find((i) => i.key === key);
     setMaking("aaaaaaaaaaa/detailed", true);
-    const making = (await summaryItems(root))[3];
-    setMaking("aaaaaaaaaaa/detailed", false);
-    expect(making).toEqual({
+    setMaking("aaaaaaaaaaa/detailed/audio", true);
+    expect(await at("aaaaaaaaaaa/detailed")).toEqual({
       key: "aaaaaaaaaaa/detailed",
       kind: "text",
-      text: "⏳ <b>Detailed summary</b>",
+      text: "Generating document…",
     });
-    expect((await summaryItems(root))[3]).toHaveProperty("buttons");
+    expect(await at("aaaaaaaaaaa/detailed/audio")).toEqual({
+      key: "aaaaaaaaaaa/detailed/audio",
+      kind: "text",
+      text: "Voicing audio…",
+    });
+    setMaking("aaaaaaaaaaa/detailed", false);
+    setMaking("aaaaaaaaaaa/detailed/audio", false);
+    expect(await at("aaaaaaaaaaa/detailed")).toHaveProperty("buttons");
+    expect(await at("aaaaaaaaaaa/detailed/audio")).toHaveProperty("buttons");
   });
 });
 
@@ -136,12 +243,18 @@ describe("syncSummaries", () => {
       })),
     };
     const synced = await syncSummaries(api as unknown as Api, dirs);
-    expect(api.createForumTopic).toHaveBeenCalledWith(-100, "📝 Summary");
+    expect(api.createForumTopic).toHaveBeenCalledWith(-100, "Summary", {
+      icon_custom_emoji_id: "5373251851074415873",
+    });
     expect(synced?.changed).toEqual([
       "contents",
       "aaaaaaaaaaa/about",
+      "aaaaaaaaaaa/brief/title",
       "aaaaaaaaaaa/brief",
+      "aaaaaaaaaaa/brief/audio",
+      "aaaaaaaaaaa/detailed/title",
       "aaaaaaaaaaa/detailed",
+      "aaaaaaaaaaa/detailed/audio",
     ]);
     // A second pass links the description in the contents.
     expect(api.editMessageText).toHaveBeenCalledWith(

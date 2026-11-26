@@ -52,7 +52,11 @@ describe("syncTopic", () => {
     const state: LibraryState = { chatId: CHAT, topics: {} };
     const result = await sync(state, [contents, audio("a")]);
 
-    expect(t.api.createForumTopic).toHaveBeenCalledWith(CHAT, "Author — Title");
+    expect(t.api.createForumTopic).toHaveBeenCalledWith(
+      CHAT,
+      "Author — Title",
+      { icon_custom_emoji_id: "5350481781306958339" },
+    );
     expect(t.api.sendMessage).toHaveBeenCalledWith(
       CHAT,
       "Contents",
@@ -294,7 +298,11 @@ describe("syncTopic", () => {
     );
     const result = await sync(state, [a, audio("b")]);
 
-    expect(t.api.createForumTopic).toHaveBeenCalledWith(CHAT, "Author — Title");
+    expect(t.api.createForumTopic).toHaveBeenCalledWith(
+      CHAT,
+      "Author — Title",
+      { icon_custom_emoji_id: "5350481781306958339" },
+    );
     expect(state.topics.book!.threadId).toBe(5);
     expect(audioMedia(-2)).toBe("f-a");
     expect(t.api.sendAudio.mock.calls.at(-2)![2]).toMatchObject({
@@ -325,6 +333,7 @@ describe("syncTopic", () => {
 
     expect(t.api.editForumTopic).toHaveBeenCalledWith(CHAT, 3, {
       name: "Author — Title",
+      icon_custom_emoji_id: "5350481781306958339",
     });
     expect(t.api.createForumTopic).not.toHaveBeenCalled();
     expect(t.api.sendAudio).not.toHaveBeenCalled();
@@ -344,6 +353,7 @@ describe("syncTopic", () => {
       expect(t.api.createForumTopic).toHaveBeenCalledWith(
         CHAT,
         "Author — Title",
+        { icon_custom_emoji_id: "5350481781306958339" },
       );
       expect(state.topics.book!.threadId).toBe(5);
       expect(t.api.sendAudio).toHaveBeenCalledTimes(1);

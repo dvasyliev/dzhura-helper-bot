@@ -5,13 +5,19 @@ import { z } from "zod";
 import { bold, escape } from "../../format.ts";
 import type { Version } from "../karaoke/pipeline.ts";
 import { uploads } from "../karaoke/youtube.ts";
+import { contentsItem, coverUrl } from "./contents.ts";
 import { withGroup } from "./group.ts";
 import type { Item } from "./reconcile.ts";
 import { LIBRARY_FILE } from "./state.ts";
-import { syncTopic, type Synced, type SyncOptions } from "./topic.ts";
+import {
+  syncTopic,
+  TOPIC_ICONS,
+  type Synced,
+  type SyncOptions,
+} from "./topic.ts";
 
 const KARAOKE_TOPIC = "karaoke";
-const TOPIC_NAME = "🎤 Karaoke";
+const TOPIC = { name: "Karaoke", icon: TOPIC_ICONS.karaoke };
 
 export type Song = {
   folder: string;
@@ -95,24 +101,51 @@ export function makeButton(
 const newest = (song: Song): number =>
   Math.max(...Object.values(song.files).map((f) => f.mtime));
 
-/** Two items per song (`<folder>/music`, `<folder>/vocals`): posted songs keep their place, new ones go at the end, oldest first. */
+/** The pinned first message: each song's name, then its versions, each a link to its message once posted. */
+function contents(
+  ordered: Song[],
+  link: (key: string) => string | undefined,
+): Item {
+  const lines = ordered.map((song) => {
+    const versions = VERSIONS.map((version) => {
+      const url = link(`${song.folder}/${version}`);
+      const name = VERSION_NAMES[version];
+      return url ? `<a href="${escape(url)}">${name}</a>` : name;
+    });
+    return `• ${escape(song.name)} — ${versions.join(" | ")}`;
+  });
+  return contentsItem(
+    `🎤 ${bold("Karaoke")} · ${ordered.length} songs\n`,
+    lines,
+  );
+}
+
+/**
+ * The contents, then per song its name and original clip under its cover (`<folder>/song`) and its two versions
+ * (`<folder>/music`, `<folder>/vocals`): posted songs keep their place, new ones go at the end, oldest first.
+ */
 export function karaokeItems(
   all: Song[],
   posted: string[],
   youtube: Record<string, string>,
+  link: (key: string) => string | undefined = () => undefined,
 ): Item[] {
   const place = (song: Song): number => {
-    const index = posted.findIndex((key) =>
-      VERSIONS.some((v) => key === `${song.folder}/${v}`),
-    );
+    const index = posted.findIndex((key) => key.startsWith(`${song.folder}/`));
     return index === -1 ? Infinity : index;
   };
   const ordered = [...all].sort((a, b) => {
     const [pa, pb] = [place(a), place(b)];
     return pa === pb ? newest(a) - newest(b) : pa < pb ? -1 : 1;
   });
-  return ordered.flatMap((song) =>
-    VERSIONS.map((version): Item => {
+  const songItems = ordered.flatMap((song): Item[] => [
+    {
+      key: `${song.folder}/song`,
+      kind: "text",
+      text: `🎤 ${bold(escape(song.name))}\nhttps://youtu.be/${song.id}`,
+      preview: coverUrl(song.id),
+    },
+    ...VERSIONS.map((version): Item => {
       const key = `${song.folder}/${version}`;
       const title = `${song.name} (${VERSION_NAMES[version]})`;
       const videoId = youtube[title];
@@ -140,7 +173,8 @@ export function karaokeItems(
         buttons: [makeButton(song.id, version)],
       };
     }),
-  );
+  ]);
+  return [contents(ordered, link), ...songItems];
 }
 
 /** Syncs the karaoke topic (`probe`: see `syncTopic`); undefined = no group. */
@@ -152,22 +186,30 @@ export async function syncKaraoke(
   return withGroup(
     api,
     async (state) => {
-      const posted =
-        state.topics[KARAOKE_TOPIC]?.messages.map((m) => m.key) ?? [];
-      const items = karaokeItems(
-        await songs(dirs.karaoke),
-        posted,
-        uploads(dirs.youtube),
-      );
-      return syncTopic(
-        api,
-        state,
-        KARAOKE_TOPIC,
-        TOPIC_NAME,
-        items,
-        dirs.state,
-        options,
-      );
+      const all = await songs(dirs.karaoke);
+      const youtube = uploads(dirs.youtube);
+      const sync = (link?: (key: string) => string | undefined) =>
+        syncTopic(
+          api,
+          state,
+          KARAOKE_TOPIC,
+          TOPIC,
+          karaokeItems(
+            all,
+            state.topics[KARAOKE_TOPIC]?.messages.map((m) => m.key) ?? [],
+            youtube,
+            link,
+          ),
+          dirs.state,
+          options,
+        );
+      const synced = await sync();
+      // The contents links the versions, known only once they are posted: a second pass edits it.
+      const again = await sync(synced.link);
+      return {
+        ...again,
+        changed: [...new Set([...synced.changed, ...again.changed])],
+      };
     },
     dirs.state,
   );

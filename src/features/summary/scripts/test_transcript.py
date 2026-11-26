@@ -23,11 +23,10 @@ def test_stamp() -> None:
     assert stamp(3725) == "1:02:05"
 
 
-def test_choose_subtitles_prefers_manual_in_the_video_language() -> None:
-    manual = {"en": [], "de": []}
-    auto = {"en-orig": [], "en": []}
-    assert choose_subtitles("en", manual, auto) == ("en", False)
-    assert choose_subtitles("en", {}, auto) == ("en-orig", True)
-    assert choose_subtitles("uk", {"uk-UA": []}, {}) == ("uk-UA", False)
-    assert choose_subtitles(None, {"de": []}, {}) == ("de", False)
-    assert choose_subtitles("en", {}, {}) is None
+def test_choose_subtitles_prefers_the_video_language() -> None:
+    assert choose_subtitles("en", {"de": [], "en": []}) == "en"
+    assert choose_subtitles("uk", {"uk-UA": []}) == "uk-UA"
+    assert choose_subtitles("en-US", {"de": [], "en": []}) == "en"
+    assert choose_subtitles("en", {"de": []}) == "de"
+    assert choose_subtitles(None, {"de": []}) == "de"
+    assert choose_subtitles("en", {}) is None

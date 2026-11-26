@@ -1,6 +1,7 @@
 """A chapter's text into mp3 parts, whichever model speaks it: pauses, even loudness, a new file every 90 min."""
 
 import re
+import subprocess
 from collections.abc import Callable
 
 import numpy as np
@@ -53,6 +54,19 @@ def encode(samples: list[np.ndarray], rate: int) -> bytes:
     encoder.set_channels(1)
     pcm = (np.clip(np.concatenate(samples), -1, 1) * 32767).astype(np.int16)
     return bytes(encoder.encode(pcm.tobytes()) + encoder.flush())
+
+
+def change_tempo(mp3: bytes, tempo: float) -> bytes:
+    """The mp3 played `tempo` times faster, its pitch kept (ffmpeg atempo); tempo 1 returns it as is."""
+    if tempo == 1:
+        return mp3
+    return subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", "pipe:0", "-filter:a", f"atempo={tempo}"]
+        + ["-c:a", "libmp3lame", "-b:a", "64k", "-ac", "1", "-f", "mp3", "pipe:1"],
+        input=mp3,
+        capture_output=True,
+        check=True,
+    ).stdout
 
 
 def assemble(text: str, speak: Speak, rate: int) -> list[bytes]:

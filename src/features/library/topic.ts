@@ -98,7 +98,9 @@ export function textOptions(item: TextItem) {
 function mediaOptions(item: FileItem) {
   return {
     ...(item.caption === undefined ? {} : { ...HTML, caption: item.caption }),
-    ...(item.kind === "audio" ? { title: item.title } : {}),
+    ...(item.kind === "audio"
+      ? { title: item.title, performer: item.performer }
+      : {}),
     ...(item.kind === "audio" && item.thumbnail
       ? { thumbnail: new InputFile(item.thumbnail) }
       : {}),
@@ -139,15 +141,22 @@ function upload(item: FileItem): InputFile {
   return new InputFile(item.file, item.name ?? path.basename(item.file));
 }
 
+/** Topic icons: custom emoji ids from getForumTopicIconStickers, the only ones a topic can have. */
+export const TOPIC_ICONS = {
+  book: "5350481781306958339", // 📚
+  karaoke: "5382003830487523366", // 🎤
+  summary: "5373251851074415873", // 📝
+};
+
 /**
- * Makes topic `key` (created as `name` when missing) hold `items`; mutates and saves `state`. With `probe` an existing
- * topic is first checked by renaming it to `name`, so one deleted by hand is created again even when nothing changed.
+ * Makes topic `key` (created as `name` with `icon` when missing) hold `items`; mutates and saves `state`. With `probe` an existing
+ * topic is first checked by renaming it to `name` and `icon`, so one deleted by hand is created again even when nothing changed.
  */
 export async function syncTopic(
   api: Api,
   state: LibraryState,
   key: string,
-  name: string,
+  { name, icon }: { name: string; icon: string },
   items: Item[],
   file = LIBRARY_FILE,
   { probe = false, progress }: SyncOptions = {},
@@ -157,7 +166,9 @@ export async function syncTopic(
   const save = () => saveState(state, file);
 
   const createTopic = async (): Promise<Topic> => {
-    const created = await api.createForumTopic(chatId, name);
+    const created = await api.createForumTopic(chatId, name, {
+      icon_custom_emoji_id: icon,
+    });
     const topic: Topic = {
       threadId: created.message_thread_id,
       messages: [],
@@ -174,7 +185,10 @@ export async function syncTopic(
   let topic = existing ?? (await createTopic());
   if (probe && existing) {
     try {
-      await api.editForumTopic(chatId, topic.threadId, { name });
+      await api.editForumTopic(chatId, topic.threadId, {
+        name,
+        icon_custom_emoji_id: icon,
+      });
     } catch (error) {
       if (topicGone(error)) {
         lost.push(...topic.messages);
@@ -241,6 +255,8 @@ export async function syncTopic(
     }
     // A caption edit leaves a media message: it keeps its kind.
     old.kind = item.kind === "text" ? old.kind : item.kind;
+    // An audio edited into a message stands alone: it is in no album.
+    if (item.kind === "audio") old.alone = true;
     old.version = version(item);
     if (fileId) old.fileId = fileId;
     else delete old.fileId;

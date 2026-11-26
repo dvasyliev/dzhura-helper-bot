@@ -23,12 +23,50 @@ function song(folder: string, files: Song["files"]): Song {
 const file = (name: string, mtime = 1) => ({ file: name, size: 5, mtime });
 
 describe("karaokeItems", () => {
-  it("a song with only the karaoke file gets a placeholder for vocals", () => {
+  it("starts with a pinned contents: each song's name, then its versions linked once posted", () => {
+    const items = karaokeItems(
+      [
+        song("A & B", { music: file("A (Karaoke).mp4", 1) }),
+        song("C", { vocals: file("C (Vocals).mp4", 2) }),
+      ],
+      [],
+      {},
+      (key) => (key === "A & B/music" ? "https://t.me/c/1/9/3" : undefined),
+    );
+    expect(items[0]).toEqual({
+      key: "contents",
+      kind: "text",
+      text: '🎤 <b>Karaoke</b> · 2 songs\n\n• A &amp; B — <a href="https://t.me/c/1/9/3">Karaoke</a> | Vocals\n• C — Karaoke | Vocals',
+      pin: true,
+    });
+  });
+
+  it("puts the song's name and original clip, under its cover, before its versions", () => {
     const items = karaokeItems(
       [song("Song", { music: file("Song (Karaoke).mp4") })],
       [],
       {},
     );
+    expect(items.map((i) => i.key)).toEqual([
+      "contents",
+      "Song/song",
+      "Song/music",
+      "Song/vocals",
+    ]);
+    expect(items[1]).toEqual({
+      key: "Song/song",
+      kind: "text",
+      text: "🎤 <b>Song</b>\nhttps://youtu.be/id-Song",
+      preview: "https://i.ytimg.com/vi/id-Song/maxresdefault.jpg",
+    });
+  });
+
+  it("a song with only the karaoke file gets a placeholder for vocals", () => {
+    const items = karaokeItems(
+      [song("Song", { music: file("Song (Karaoke).mp4") })],
+      [],
+      {},
+    ).slice(2);
     expect(items[0]).toMatchObject({
       key: "Song/music",
       kind: "video",
@@ -49,7 +87,7 @@ describe("karaokeItems", () => {
       [],
       { "Song (Karaoke)": "abc" },
     );
-    expect(items[0]).toEqual({
+    expect(items[2]).toEqual({
       key: "Song/music",
       kind: "text",
       text: "🎤 <b>Song (Karaoke)</b>\nhttps://youtu.be/abc",
@@ -60,14 +98,20 @@ describe("karaokeItems", () => {
     const a = song("A", { music: file("A (Karaoke).mp4", 5) });
     const b = song("B", { music: file("B (Karaoke).mp4", 3) });
     const c = song("C", { music: file("C (Karaoke).mp4", 1) });
-    const keys = karaokeItems([a, b, c], ["B/music", "B/vocals"], {}).map(
-      (i) => i.key,
-    );
+    const keys = karaokeItems(
+      [a, b, c],
+      ["contents", "B/song", "B/music", "B/vocals"],
+      {},
+    ).map((i) => i.key);
     expect(keys).toEqual([
+      "contents",
+      "B/song",
       "B/music",
       "B/vocals",
+      "C/song",
       "C/music",
       "C/vocals",
+      "A/song",
       "A/music",
       "A/vocals",
     ]);
@@ -132,10 +176,12 @@ describe("songs", () => {
     expect(found!.files.vocals?.file).toBe(join(dir, "S (abc)/S (Vocals).mp4"));
     const items = karaokeItems([found!], [], {});
     expect(items.map((i) => i.key)).toEqual([
+      "contents",
+      "S (abc)/song",
       "S (abc)/music",
       "S (abc)/vocals",
     ]);
-    expect(items[1]).toMatchObject({ caption: "🎤 <b>S (Vocals)</b>" });
+    expect(items[3]).toMatchObject({ caption: "🎤 <b>S (Vocals)</b>" });
   });
 
   it("skips a song whose meta.json lacks what the video needs", async () => {
@@ -173,15 +219,33 @@ describe("syncKaraoke", () => {
     const api = {
       createForumTopic: vi.fn(() => Promise.resolve({ message_thread_id: 9 })),
       sendMessage: vi.fn(() => Promise.resolve({ message_id: id++ })),
+      pinChatMessage: vi.fn(() => Promise.resolve(true)),
+      editMessageText: vi.fn(() => Promise.resolve(true)),
     };
 
     const synced = await syncKaraoke(api as unknown as Api, dirs);
 
-    expect(api.createForumTopic).toHaveBeenCalledWith(-100, "🎤 Karaoke");
-    expect(api.sendMessage.mock.calls.map((c) => (c as unknown[])[1])).toEqual([
+    expect(api.createForumTopic).toHaveBeenCalledWith(-100, "Karaoke", {
+      icon_custom_emoji_id: "5382003830487523366",
+    });
+    expect(
+      api.sendMessage.mock.calls.slice(2).map((c) => (c as unknown[])[1]),
+    ).toEqual([
       "🎤 <b>S (Karaoke)</b>\nhttps://youtu.be/yt1",
       "⏳ <b>S (Vocals)</b> — not made yet",
     ]);
-    expect(synced?.changed).toEqual(["S/music", "S/vocals"]);
+    expect(synced?.changed).toEqual([
+      "contents",
+      "S/song",
+      "S/music",
+      "S/vocals",
+    ]);
+    // A second pass links the posted versions in the contents.
+    expect(api.editMessageText).toHaveBeenCalledWith(
+      -100,
+      1,
+      expect.stringContaining('/9/3">Karaoke</a> | <a'),
+      expect.anything(),
+    );
   });
 });

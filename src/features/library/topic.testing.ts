@@ -10,7 +10,7 @@ import {
   type TextItem,
 } from "./reconcile.ts";
 import type { LibraryState } from "./state.ts";
-import { syncTopic, type SyncOptions } from "./topic.ts";
+import { syncTopic, TOPIC_ICONS, type SyncOptions } from "./topic.ts";
 
 export const CHAT = -1001234567890;
 
@@ -128,7 +128,7 @@ export function topicHarness() {
         t.api as unknown as Api,
         state,
         "book",
-        "Author — Title",
+        { name: "Author — Title", icon: TOPIC_ICONS.book },
         items,
         t.file,
         options,

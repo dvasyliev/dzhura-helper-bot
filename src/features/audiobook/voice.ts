@@ -33,6 +33,10 @@ export type VoiceJob = {
   /** Where to write the list of words with guessed stress (Ukrainian only); omitted when re-voicing single chapters. */
   report?: string;
   chapters: { index: number; name: string; text: string }[];
+  /** Plays the audio this many times faster, pitch kept; 1 by default. */
+  tempo?: number;
+  /** Each chapter in one file, however long. */
+  oneFile?: boolean;
 };
 
 export type VoiceEvent =
@@ -56,6 +60,8 @@ export async function* voiceChapters(
     dictionary: job.dictionary,
     report: job.report ?? null,
     chapters: job.chapters,
+    tempo: job.tempo ?? 1,
+    one_file: job.oneFile ?? false,
   };
   for await (const event of runPython(
     "src/features/audiobook/scripts/voice.py",
