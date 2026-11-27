@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.0 (2026-11-27)
+
+### Features
+
+- summaries of English videos in both languages; one status format for every job (5752254)
+
 ## 0.13.1 (2026-11-27)
 
 ### Other
