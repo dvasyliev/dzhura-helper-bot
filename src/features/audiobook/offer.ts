@@ -3,7 +3,12 @@ import { bold, escape, HTML, quote } from "../../lib/text/format.ts";
 import { bookName, bookPaths } from "../../lib/shelf/names.ts";
 import type { ShelfBook } from "../../lib/shelf/shelf.ts";
 import type { Language } from "../../lib/book/language.ts";
-import { isVoiced, voicesFor, type Voice } from "../../lib/tts/voice.ts";
+import {
+  isVoiced,
+  voiceLabel,
+  voicesFor,
+  type Voice,
+} from "../../lib/tts/voice.ts";
 import { chapters, type Chapter } from "../../lib/book/tracks.ts";
 import { voicedCount } from "./library.ts";
 import { forecast } from "./text.ts";
@@ -52,11 +57,12 @@ export async function offer(ctx: Context, book: ShelfBook, language: Language) {
     ...(resume ? ["Pick the same voice to continue where it stopped."] : []),
   ].join("\n\n");
   const keyboard = new InlineKeyboard();
-  for (const voice of voices) keyboard.text(voice.name, `voice:${voice.id}`);
+  for (const voice of voices)
+    keyboard.text(voiceLabel(voice.name), `voice:${voice.id}`);
   await ctx.reply(text, { ...HTML, reply_markup: keyboard });
 }
 
-/** «Already voiced by «Oksana»: 12 of 71» (HTML) for each voice that has audio of this book. */
+/** «Already voiced by «👩 Woman (UA)»: 12 of 71» (HTML) for each voice that has audio of this book. */
 export async function voicedSoFar(
   book: ShelfBook,
   all: Chapter[],
@@ -72,7 +78,7 @@ export async function voicedSoFar(
   ).filter((d) => d.count);
   return done.map(
     (d) =>
-      `Already voiced by «${escape(d.voice.name)}»: ${d.count} of ${all.length}`,
+      `Already voiced by «${voiceLabel(d.voice.name)}»: ${d.count} of ${all.length}`,
   );
 }
 

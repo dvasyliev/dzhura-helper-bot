@@ -8,7 +8,7 @@ import { readJsonOrUndefined } from "../fs/json.ts";
 import { MAX_NAME_CHARS, safeFilename } from "../shelf/names.ts";
 import { bold, escape } from "../text/format.ts";
 import { statusText, withLanguage } from "../text/status.ts";
-import { summaryVoices, type Voice } from "../tts/voice.ts";
+import { summaryVoices, voiceLabel, type Voice } from "../tts/voice.ts";
 import { aboutMessage } from "../video/summary.ts";
 import { VIDEO_INFO, type VideoInfo } from "../video/info.ts";
 import { contentsItem, coverUrl } from "./contents.ts";
@@ -273,12 +273,11 @@ export function summaryMenu(
 
 /** The audio menu: the summary voices of the shown language but the one playing, as a woman or a man. */
 export function audioMenu(id: string, shown: Shown): Button[][] {
-  const label = { woman: "👩 Woman", man: "👨 Man" };
   return menu(id, [
     summaryVoices(shown.language)
       .filter((v) => v.name !== shown.voice)
       .map((v) => ({
-        text: `${label[v.gender]} (${LANGUAGE_LABELS[v.language]})`,
+        text: voiceLabel(v.name),
         data: `summary:voice:${id}:${v.name}`,
       })),
   ]);

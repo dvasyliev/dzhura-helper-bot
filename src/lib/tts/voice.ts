@@ -44,6 +44,14 @@ export function voicesFor(language: Language): Voice[] {
   return VOICES.filter((v) => v.language === language);
 }
 
+/** What the user sees for a voice: «👩 Woman (UA)»; a folder of a voice no longer offered keeps its name. */
+export function voiceLabel(name: string): string {
+  const voice = VOICES.find((v) => v.name === name);
+  if (!voice) return name;
+  const gender = voice.gender === "woman" ? "👩 Woman" : "👨 Man";
+  return `${gender} (${voice.language === "uk" ? "UA" : "EN"})`;
+}
+
 /** The voices a summary in `language` offers, in voices.json order. */
 export function summaryVoices(language: Language): Voice[] {
   return voicesFor(language).filter((v) => v.summaryTempo);

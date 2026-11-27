@@ -24,18 +24,6 @@
       "gender": "woman"
     },
     {
-      "id": "af_bella",
-      "name": "Bella",
-      "provider": "kokoro",
-      "gender": "woman"
-    },
-    {
-      "id": "am_michael",
-      "name": "Michael",
-      "provider": "kokoro",
-      "gender": "man"
-    },
-    {
       "id": "bm_george",
       "name": "George",
       "provider": "kokoro",

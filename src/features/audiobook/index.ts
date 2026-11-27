@@ -34,6 +34,7 @@ export { offer, SEND_AGAIN };
 import {
   VOICES,
   removeAudio,
+  voiceLabel,
   voicesFor,
   type Voice,
 } from "../../lib/tts/voice.ts";
@@ -68,7 +69,7 @@ composer.callbackQuery(/^voice:(.+)$/, async (ctx) => {
   }
   current = { book, voice };
   await ctx.reply(
-    `✅ ${bold(`«${escape(book.title)}» is already voiced by «${escape(voice.name)}»`)}\nTo re-voice a chapter: /regen 5`,
+    `✅ ${bold(`«${escape(book.title)}» is already voiced by «${voiceLabel(voice.name)}»`)}\nTo re-voice a chapter: /regen 5`,
     HTML,
   );
 });
@@ -101,7 +102,7 @@ composer.hears(/^[\d\s,–-]+$/, async (ctx, next) => {
   const todo = asked.filter((c) => left.has(c.index));
   if (!todo.length)
     return ctx.reply(
-      `✅ ${bold(`These chapters are already voiced by «${escape(voice.name)}»`)}\nTo re-voice: /regen ${escape(ctx.message!.text!)}`,
+      `✅ ${bold(`These chapters are already voiced by «${voiceLabel(voice.name)}»`)}\nTo re-voice: /regen ${escape(ctx.message!.text!)}`,
       HTML,
     );
   await start(ctx, book, voice, todo);
@@ -119,7 +120,7 @@ composer.command("regen", async (ctx) => {
   const todo = all.filter((c) => numbers.includes(c.index + 1));
   if (!todo.length)
     return ctx.reply(
-      `❓ ${bold(`Which chapters of «${escape(book.title)}» to re-voice with «${escape(voice.name)}»?`)}\nSend /regen with numbers from 1 to ${all.length}: /regen 5 or /regen 5-7.`,
+      `❓ ${bold(`Which chapters of «${escape(book.title)}» to re-voice with «${voiceLabel(voice.name)}»?`)}\nSend /regen with numbers from 1 to ${all.length}: /regen 5 or /regen 5-7.`,
       HTML,
     );
   const { audioDir } = bookPaths(book.folder, voice.name);
@@ -128,7 +129,7 @@ composer.command("regen", async (ctx) => {
     await notify(
       ctx.api,
       chatId,
-      `🎧 ${bold("Re-voicing")} ${todo.map((c) => `«${escape(c.name)}»`).join(", ")} with «${escape(voice.name)}»`,
+      `🎧 ${bold("Re-voicing")} ${todo.map((c) => `«${escape(c.name)}»`).join(", ")} with «${voiceLabel(voice.name)}»`,
     );
     for (const c of todo) await removeAudio(audioDir, c.name);
     const started = Date.now();
@@ -222,7 +223,7 @@ async function start(
     await notify(
       ctx.api,
       chatId,
-      `🎧 ${bold(`Voicing with «${escape(voice.name)}»`)}\n${range}\n\n${quote(estimate(todo, voice))}`,
+      `🎧 ${bold(`Voicing with «${voiceLabel(voice.name)}»`)}\n${range}\n\n${quote(estimate(todo, voice))}`,
     );
     const started = Date.now();
     await voiceBook(ctx.api, chatId, book, voice, todo, "new", {

@@ -139,7 +139,7 @@ Check in Telegram:
 
 ### Voices
 
-The voice buttons are in [voices.json](src/lib/tts/voices.json), grouped by language. Each voice has `id`, `name` (the button) and `provider` (`holos` for Ukrainian, `kokoro` for English). Every voice of the book's language becomes a button. Kokoro's other English voices are in its [voice list](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md): an id starting with `a` is American, with `b` British.
+The voice buttons are in [voices.json](src/lib/tts/voices.json), grouped by language. Each voice has `id`, `name` (the audio folder; the button shows the voice's gender and language, «👩 Woman (UA)»), `gender` and `provider` (`holos` for Ukrainian, `kokoro` for English). Every voice of the book's language becomes a button, so keep one woman and one man per language. Kokoro's other English voices are in its [voice list](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md): an id starting with `a` is American, with `b` British.
 
 To hear the voices, put an EPUB into `data/books/<Author> - <Title>/` and run `npm run sample -- "<Author> - <Title>" 150`: `data/voice-samples/<language>/` gets an mp3 of the first 150 words in each voice of the book's language.
 

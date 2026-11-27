@@ -22,6 +22,8 @@
 </p>
 
 <p>
+  <a href="https://youtu.be/xvw1dmiroeI"><b>▶️ Watch the video</b></a>
+  &nbsp;&nbsp;&nbsp;
   <a href="#features"><b>Features</b></a>
   &nbsp;&nbsp;&nbsp;
   <a href="#quick-start"><b>Quick start</b></a>
@@ -39,11 +41,11 @@ Send a link to a YouTube video and get a summary in Ukrainian (and in English fo
 
 ### 📚 Book → Translation → Audiobook
 
-Send an EPUB or PDF book. Translate it into Ukrainian from English or Russian, then voice the translation as an audiobook, an mp3 per chapter. A Ukrainian or English book can be voiced right away, and a text PDF can be turned into an EPUB.
+Send an EPUB or PDF book. Translate it into Ukrainian from English or russian, then voice the translation as an audiobook, an mp3 per chapter. A Ukrainian or English book can be voiced right away, and a text PDF can be turned into an EPUB.
 
 ### 🎤 YouTube song → Karaoke
 
-Send a link to a YouTube song and get a karaoke video with the words lighting up as they are sung: music only, with the singer's vocals, or both. Works for English, Ukrainian and Russian songs.
+Send a link to a YouTube song and get a karaoke video with the words lighting up as they are sung: music only, with the singer's vocals, or both.
 
 ### Where it runs
 

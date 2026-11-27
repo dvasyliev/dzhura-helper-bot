@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summaryVoices, voicesFor } from "./voice.ts";
+import { summaryVoices, voiceLabel, voicesFor } from "./voice.ts";
 
 describe("summaryVoices", () => {
   it("offers two voices a language: Ukrainian sped up, English as is", () => {
@@ -13,7 +13,20 @@ describe("summaryVoices", () => {
       ["Heart", "woman", 1],
       ["George", "man", 1],
     ]);
-    // Audiobooks keep every voice.
-    expect(voicesFor("en")).toHaveLength(4);
+    // Audiobooks offer the same two voices.
+    expect(voicesFor("en")).toEqual(summaryVoices("en"));
+  });
+});
+
+describe("voiceLabel", () => {
+  it("names a voice by its gender and language, never by its name", () => {
+    expect(voiceLabel("Oksana")).toBe("👩 Woman (UA)");
+    expect(voiceLabel("Andrii")).toBe("👨 Man (UA)");
+    expect(voiceLabel("Heart")).toBe("👩 Woman (EN)");
+    expect(voiceLabel("George")).toBe("👨 Man (EN)");
+  });
+
+  it("keeps the folder name of a voice no longer offered", () => {
+    expect(voiceLabel("Bella")).toBe("Bella");
   });
 });

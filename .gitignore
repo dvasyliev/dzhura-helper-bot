@@ -12,3 +12,7 @@ __pycache__/
 /.claude/worktrees/
 .ruff_cache/
 .pytest_cache/
+
+# Promo video stills (assets/promo-video/README.md)
+/assets/promo-video/snaps*/
+/assets/promo-video/*.mp4

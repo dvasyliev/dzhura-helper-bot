@@ -28,6 +28,7 @@ import { coverThumbnail } from "./thumbnail.ts";
 import { BOOK_MD, parseMarkdown, SOURCE_MD } from "../book/markdown.ts";
 import { BOOK_EPUB } from "../book/pandoc.ts";
 import { bold, escape } from "../text/format.ts";
+import { voiceLabel } from "../tts/voice.ts";
 import { withGroup } from "./group.ts";
 import type { FileItem, Item } from "./reconcile.ts";
 import { LIBRARY_FILE } from "./state.ts";
@@ -191,7 +192,7 @@ export async function bookItems(
   const lines = [
     ...voiced.map(
       (v) =>
-        `🎧 ${escape(v.name)}: ${voicedChapters(v.files)} of ${chapters(v.book).length}`,
+        `🎧 ${escape(voiceLabel(v.name))}: ${voicedChapters(v.files)} of ${chapters(v.book).length}`,
     ),
     ...(ukEpub ? ["🌐 Ukrainian translation"] : []),
   ];
@@ -219,7 +220,7 @@ export async function bookItems(
     items.push({
       key: `voice:${voice.name}`,
       kind: "text",
-      text: `🎧 ${bold(escape(voice.name))}`,
+      text: `🎧 ${bold(escape(voiceLabel(voice.name)))}`,
     });
     const files = filesByTrack(voice.files);
     const tracks = chapters(voice.book);
