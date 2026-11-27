@@ -88,6 +88,7 @@ composer.callbackQuery(/^epub:([0-9a-f]+)$/, async (ctx) => {
 export const epub: Feature = {
   id: "epub",
   title: "📘 PDF → EPUB",
+  needs: ["pandoc"],
   hint: `📘 ${bold("PDF → EPUB")}\nSend a PDF book, then press «${BUTTON}».`,
   composer,
   actions: (input) => epubActions(input),

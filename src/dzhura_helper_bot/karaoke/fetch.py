@@ -10,8 +10,8 @@ import yt_dlp
 from pydantic import BaseModel
 
 from dzhura_helper_bot.karaoke.lyrics import split_title
+from dzhura_helper_bot.shared.youtube import YOUTUBE_OPTIONS
 
-SOCKET_TIMEOUT = 30  # seconds a YouTube connection may stall
 MAX_NAME_CHARS = 100  # like the books: readable names within file system limits
 
 
@@ -68,10 +68,8 @@ def fetch(url: str, data_dir: str, video_id: str) -> tuple[str, dict]:
             "outtmpl": os.path.join(tmp, "clip.%(ext)s"),
             "merge_output_format": "mp4",
             "noplaylist": True,
-            "quiet": True,
-            "no_warnings": True,
+            **YOUTUBE_OPTIONS,
             "noprogress": True,
-            "socket_timeout": SOCKET_TIMEOUT,
         }
     ) as ydl:
         info = ydl.extract_info(url, download=True)

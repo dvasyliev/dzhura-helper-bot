@@ -1,5 +1,6 @@
 import type { Composer, Context } from "grammy";
 import type { Input } from "../input/input.ts";
+import type { Tool } from "../tools/tools.ts";
 
 /** One thing the bot can do; it shows up as a button in the /start menu. */
 export type Feature = {
@@ -9,6 +10,8 @@ export type Feature = {
   hint?: string;
   /** Replaces `hint` when the reply needs more than text, e.g. buttons. */
   open?: (ctx: Context) => Promise<unknown>;
+  /** Programs it runs that may not be installed; the menu marks the feature and says how to install them. */
+  needs?: Tool[];
   /** Extra commands for the Telegram «Menu» list; their handlers live in `composer`. */
   commands?: { command: string; description: string }[];
   /** Handlers for the feature's messages and buttons. */

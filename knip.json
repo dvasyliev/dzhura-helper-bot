@@ -14,5 +14,5 @@
     "@swc/core"
   ],
   "ignore": [".claude/**"],
-  "ignoreBinaries": ["uv", "pandoc", "taskpolicy"]
+  "ignoreBinaries": ["uv", "pandoc", "taskpolicy", "caffeinate"]
 }

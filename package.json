@@ -8,7 +8,8 @@
   },
   "scripts": {
     "test": "vitest run",
-    "start": "pkill -f 'tsx.* src/[i]ndex.ts'; while pgrep -f 'tsx.* src/[i]ndex.ts' >/dev/null; do sleep 0.2; done; tsx --env-file-if-exists=.env src/index.ts",
+    "setup": "npm install && uv sync && ([ -f .env ] || cp .env.example .env)",
+    "start": "pkill -f 'tsx.* src/[i]ndex.ts'; while pgrep -f 'tsx.* src/[i]ndex.ts' >/dev/null; do sleep 0.2; done; caffeinate -i tsx --env-file-if-exists=.env src/index.ts",
     "typecheck": "tsc --noEmit",
     "sample": "tsx --env-file-if-exists=.env src/features/audiobook/sample.ts",
     "check": ".claude/hooks/check-all.sh --force",

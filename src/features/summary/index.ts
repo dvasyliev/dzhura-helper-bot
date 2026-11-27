@@ -161,6 +161,7 @@ composer.callbackQuery(/^summary:/, (ctx) =>
 export const summary: Feature = {
   id: "summary",
   title: "📝 YouTube summary",
+  needs: ["claude", "ffmpeg"],
   hint: `📝 ${bold("YouTube summary")}\nSend a YouTube link (not a music clip) and I'll describe it in Ukrainian; a summary and its audio are a button away.`,
   composer,
   actions: async (input) => {

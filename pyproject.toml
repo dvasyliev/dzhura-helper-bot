@@ -31,6 +31,7 @@ dependencies = [
     "tenacity>=9.2.1",
     "torch>=2.15.0",
     "yt-dlp>=2026.11.23",
+    "yt-dlp-ejs>=0.8.0",
 ]
 
 [build-system]
@@ -60,5 +61,6 @@ dev = [
 known_first_party = ["dzhura_helper_bot"]
 # audioread: audio-separator needs it but does not declare it. misaki[en] and en-core-web-sm: mlx-audio's Kokoro
 # needs them for English but does not declare them (glossary_candidates.py loads en-core-web-sm by name).
-# pymorphy3-dicts-uk: the Ukrainian dictionary pymorphy3 loads for lang="uk". pytest: imported only by the tests.
-per_rule_ignores = { DEP002 = ["audioread", "misaki", "en-core-web-sm", "pymorphy3-dicts-uk"], DEP004 = ["pytest"] }
+# pymorphy3-dicts-uk: the Ukrainian dictionary pymorphy3 loads for lang="uk". yt-dlp-ejs: the YouTube challenge solver
+# yt-dlp loads by itself. pytest: imported only by the tests.
+per_rule_ignores = { DEP002 = ["audioread", "misaki", "en-core-web-sm", "pymorphy3-dicts-uk", "yt-dlp-ejs"], DEP004 = ["pytest"] }

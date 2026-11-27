@@ -198,6 +198,7 @@ composer.callbackQuery(
 export const karaoke: Feature = {
   id: "karaoke",
   title: "🎤 Generate karaoke",
+  needs: ["libass"],
   hint: `🎤 ${bold("Generate karaoke")}\nSend a YouTube clip link and I'll make a karaoke video of it.`,
   composer,
   actions: async (input) => {

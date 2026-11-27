@@ -7,6 +7,7 @@ import pytest
 
 from dzhura_helper_bot.audiobook.uk.abbreviations import expand_abbreviations
 from dzhura_helper_bot.audiobook.uk import prepare
+from dzhura_helper_bot.audiobook.uk import stress_index as index_builder
 from dzhura_helper_bot.audiobook.uk.prepare import apply_dictionary, load_dictionary, prepare_text
 from dzhura_helper_bot.audiobook.sentences import MAX_SENTENCE_CHARS, pack, split_sentences
 from dzhura_helper_bot.audiobook.voice import keep_text, save
@@ -81,7 +82,7 @@ def stress_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         json.dumps({"forms": {"йому": ["йому́"], "замок": ["замо́к", "за́мок"]}, "homographs": ["замок"]}),
         encoding="utf-8",
     )
-    monkeypatch.setattr(prepare, "STRESS_INDEX", str(index))
+    monkeypatch.setattr(index_builder, "INDEX", str(index))
     monkeypatch.setattr(prepare, "_index", None)
 
 
@@ -121,8 +122,13 @@ def test_prepare_text_reports_homographs(tmp_path: Path) -> None:
     assert any(h.replace("́", "") == "замок" for h in homographs), homographs
 
 
+def offline() -> tuple[int, int]:
+    raise OSError("no network")
+
+
 def test_prepare_text_without_index_still_works(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(prepare, "STRESS_INDEX", str(tmp_path / "missing.json"))
+    monkeypatch.setattr(index_builder, "INDEX", str(tmp_path / "missing.json"))
+    monkeypatch.setattr(index_builder, "build", offline)
     monkeypatch.setattr(prepare, "_index", None)
     text, _, _ = prepared(tmp_path, "Його книжка була тут.")
     assert text.startswith("Його́ кни́жка")

@@ -16,7 +16,8 @@ from typing import Any, cast
 import yt_dlp
 from pydantic import BaseModel
 
-SOCKET_TIMEOUT = 30  # seconds a YouTube connection may stall
+from dzhura_helper_bot.shared.youtube import YOUTUBE_OPTIONS
+
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 LINE_SECONDS = 30
 
@@ -73,7 +74,7 @@ def choose_subtitles(language: str | None, manual: dict[str, Any]) -> str | None
 
 
 def from_subtitles(url: str, work: str) -> list[str] | None:
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "socket_timeout": SOCKET_TIMEOUT}) as ydl:
+    with yt_dlp.YoutubeDL({**YOUTUBE_OPTIONS}) as ydl:
         meta = ydl.extract_info(url, download=False) or {}
     lang = choose_subtitles(meta.get("language"), meta.get("subtitles") or {})
     if not lang:
@@ -81,10 +82,8 @@ def from_subtitles(url: str, work: str) -> list[str] | None:
     # The typeshed stub types skip_download as str; yt-dlp takes a bool.
     with yt_dlp.YoutubeDL(
         {  # pyright: ignore[reportArgumentType]
-            "quiet": True,
-            "no_warnings": True,
+            **YOUTUBE_OPTIONS,
             "noprogress": True,
-            "socket_timeout": SOCKET_TIMEOUT,
             "skip_download": True,
             "writesubtitles": True,
             "subtitleslangs": [lang],
@@ -105,10 +104,8 @@ def from_whisper(url: str, work: str) -> list[str]:
 
     with yt_dlp.YoutubeDL(
         {
-            "quiet": True,
-            "no_warnings": True,
+            **YOUTUBE_OPTIONS,
             "noprogress": True,
-            "socket_timeout": SOCKET_TIMEOUT,
             "format": "bestaudio/best",
             "outtmpl": os.path.join(work, "audio.%(ext)s"),
         }

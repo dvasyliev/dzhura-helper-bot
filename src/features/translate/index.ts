@@ -70,6 +70,7 @@ composer.callbackQuery(/^continue:([0-9a-f]+)$/, async (ctx) =>
 export const translate: Feature = {
   id: "translate",
   title: "🌐 Translate a book",
+  needs: ["claude", "pandoc"],
   open: openMenu,
   composer,
   actions: async (input) => {

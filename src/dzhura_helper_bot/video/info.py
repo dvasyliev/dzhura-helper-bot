@@ -10,7 +10,7 @@ import sys
 import yt_dlp
 from pydantic import BaseModel
 
-SOCKET_TIMEOUT = 30  # seconds a YouTube connection may stall
+from dzhura_helper_bot.shared.youtube import YOUTUBE_OPTIONS
 
 
 class Job(BaseModel):
@@ -19,7 +19,7 @@ class Job(BaseModel):
 
 def main() -> None:
     job = Job.model_validate_json(sys.stdin.read())
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "socket_timeout": SOCKET_TIMEOUT}) as ydl:
+    with yt_dlp.YoutubeDL({**YOUTUBE_OPTIONS}) as ydl:
         meta = ydl.extract_info(f"https://www.youtube.com/watch?v={job.id}", download=False) or {}
     chapters = [{"start": c["start_time"], "title": c["title"]} for c in meta.get("chapters") or []]
     info = {

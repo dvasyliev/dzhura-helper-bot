@@ -1,6 +1,7 @@
 """Builds the stress index used by prepare.py: every stressed word form of Ukrainian Wiktionary
 (kaikki.org extract, CC BY-SA) and the lang-uk list of homographs (words with several stresses).
-Run once: uv run python -m dzhura_helper_bot.audiobook.uk.stress_index (downloads ~320 MB, keeps ~18 MB)."""
+prepare.py builds it on the first Ukrainian book; to build it again by hand:
+uv run python -m dzhura_helper_bot.audiobook.uk.stress_index (downloads ~320 MB, keeps ~18 MB)."""
 
 import csv
 import io
@@ -26,7 +27,8 @@ def normal(word: str) -> str:
     return re.sub("[’ʼ]", "'", word.lower()).replace("̀", "")
 
 
-def main() -> None:
+def build() -> tuple[int, int]:
+    """Downloads the sources and writes the index; (words, homographs)."""
     forms: dict[str, set[str]] = defaultdict(set)
     with requests.get(WIKTIONARY, stream=True, timeout=DOWNLOAD_TIMEOUT) as response:
         response.raise_for_status()
@@ -45,7 +47,12 @@ def main() -> None:
     with open(f"{INDEX}.part", "w", encoding="utf-8") as f:
         json.dump({"forms": {k: sorted(v) for k, v in forms.items()}, "homographs": homographs}, f, ensure_ascii=False)
     os.replace(f"{INDEX}.part", INDEX)
-    print(f"{INDEX}: {len(forms)} words, {len(homographs)} homographs")
+    return len(forms), len(homographs)
+
+
+def main() -> None:
+    words, homographs = build()
+    print(f"{INDEX}: {words} words, {homographs} homographs")
 
 
 if __name__ == "__main__":

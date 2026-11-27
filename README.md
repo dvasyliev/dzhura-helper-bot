@@ -35,6 +35,7 @@ A personal Telegram helper bot that runs on your own Mac. A *dzhura* was a Cossa
 | 🎧 Audiobook | Voices EPUB and text PDF books and sends them to Telegram as an mp3 per chapter. | en/ua | HolosTTS (ua), Kokoro-82M (en), docling (PDF) | works |
 | 🎤 Karaoke | Makes karaoke videos from YouTube songs, with the words lighting up as they are sung, and sends them to Telegram or to your personal YouTube playlist. | en/ua/ru | Mel-Band RoFormer, Whisper, MMS | works |
 | 🌐 Book translation | Translates EPUB and PDF books and sends the translated book to Telegram. | en/ru → ua | Claude, spaCy, pymorphy3, pandoc | works |
+| 📘 PDF → EPUB | Turns a text PDF book into an EPUB and sends it to Telegram. | any | docling, pandoc | works |
 | 📝 YouTube summary | Sums up a YouTube video, brief or detailed, in Ukrainian (and in English for an English video), with an audio version, and sends it to Telegram. | en/ua/ru | Whisper, Claude, HolosTTS (ua), Kokoro-82M (en) | works |
 
 Voicing and karaoke models run locally on Apple Silicon; translation and summaries go through Claude.
@@ -45,9 +46,10 @@ Everything the bot makes can also go to a Telegram group of your own, so books a
 
 - **a topic per book**: a pinned contents message, the original, the Ukrainian translation and the chapters of every voice in order;
 - **one 🎤 Karaoke topic** with every song, where a missing version has a "Make it" button;
+- **one 📝 Summary topic** with every summed-up video, its summary and its audio;
 - **updates in place**: a re-voiced chapter or a new translation replaces the old file in its message.
 
-Your private chat with the bot stays the control panel: you send books and links there, and the bot replies `Done → <link>` to the result in the group. You can invite family and friends to the group to listen and download; the bot still takes orders only from you. Setting it up takes two minutes: [SETUP.md, step 6](SETUP.md#6-library-group-optional).
+Your private chat with the bot stays the control panel: you send books and links there, and the bot's ✅ Done message links to the result in the group. You can invite family and friends to the group to listen and download; the bot still takes orders only from you. Setting it up takes two minutes: [docs/library-group.md](docs/library-group.md).
 
 ## How it works
 
@@ -73,13 +75,18 @@ The book is translated from the same Markdown the bot already makes for PDFs. Fi
 
 Claude then translates the book part by part, getting with each part the glossary lines for the names in it. A Python script checks each translation without a model. It fixes the apostrophes, quotes and dialogue dashes, and it flags letters of another alphabet, lost paragraphs, glossary names in the wrong form, and calques from the LanguageTool and [chysto](https://github.com/vladichumachenko/chysto-ukr-skills) tables, which [pymorphy3](https://github.com/no-plagiarism/pymorphy3) extends to other forms of a phrase. A part with problems gets a fix call, and a second one if letters of another alphabet are still left. [pandoc](https://pandoc.org) then builds the translated EPUB, and the book can be voiced right away.
 
+### 📝 YouTube summary
+
+A link to a YouTube video that is not a music clip goes to the summary; a music clip goes to karaoke. The bot first needs the video's words. It takes the subtitles people made for the video through [yt-dlp](https://github.com/yt-dlp/yt-dlp); YouTube's automatic subtitles are never used. Without them, [Whisper large-v3-turbo](https://huggingface.co/mlx-community/whisper-large-v3-turbo), run through [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), listens to the video's audio.
+
+[Claude](https://www.anthropic.com/claude), called through `claude -p`, first writes a short description of the video, and on a button press a brief or a detailed summary with times that link to that moment of the video, in Ukrainian and, for an English video, in English too. A summary can also be listened to: the same voices as the audiobooks read it, [HolosTTS](https://huggingface.co/patriotyk/HolosTTS) in Ukrainian and [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) in English, a little faster, with [ffmpeg](https://ffmpeg.org) changing the tempo.
+
 ## Ideas
 
 Features that would reuse what is already here (Whisper, vocal separation, HolosTTS, Kokoro, yt-dlp, ffmpeg):
 
 - **Voice message to text**: forward a voice note or video note, get the text and a short summary.
 - **Article to audio**: send a link, get an mp3, the same pipeline as audiobooks.
-- **Translate and voice a book**: an English EPUB in, a Ukrainian audiobook out.
 - **Backing track or a cappella**: music only or vocals only as an mp3, no video.
 - **Lyrics with translation**: a foreign song with a Ukrainian line under each sung line.
 - **Subtitles for any video**: an `.srt` and a video with burned-in subtitles, optionally translated.
@@ -89,14 +96,13 @@ Features that would reuse what is already here (Whisper, vocal separation, Holos
 You need a Mac with Apple Silicon and about 6 GB for models.
 
 ```bash
-brew install node uv pandoc   # pandoc builds the translated EPUB
-npm install
-uv sync
-cp .env.example .env   # fill in BOT_TOKEN and OWNER_ID
-caffeinate -i npm start
+brew install node uv
+npm run setup   # Node and Python packages, and .env from .env.example
+# fill in BOT_TOKEN and OWNER_ID in .env
+npm start
 ```
 
-The full guide (Telegram bot, stress models, ffmpeg with libass, YouTube upload), by hand or with an agent: [SETUP.md](SETUP.md).
+That is enough for audiobooks. The other features need a program or two each (pandoc, ffmpeg, Claude Code); the bot marks the ones it lacks in its menu and says what to install. The full guide, by hand or with an agent: [SETUP.md](SETUP.md).
 
 How each feature works inside: [docs/how-it-works.md](docs/how-it-works.md).
 

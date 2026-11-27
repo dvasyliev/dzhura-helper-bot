@@ -3,12 +3,17 @@ guessed, Wiktionary when it knows a single stress), the book's own stress dictio
 is (re)voiced."""
 
 import json
+import logging
 import os
 import re
 import sys
 from collections import Counter
 from pathlib import Path
 
+from accentuk.assets import DEFAULT_CACHE_DIR as ACCENTUK_CACHE
+from accentuk.assets import download_assets
+
+from dzhura_helper_bot.audiobook.uk import stress_index as index_builder
 from dzhura_helper_bot.audiobook.uk.abbreviations import expand_abbreviations
 from dzhura_helper_bot.audiobook.uk.numbers import numbers_to_words
 
@@ -26,7 +31,6 @@ WORD = re.compile(rf"(?:[^\W\d_]{STRESS}?)+(?:[-'’ʼ](?:[^\W\d_]{STRESS}?)+)*"
 UNSURE = {"dictionary_default", "suffix", "default_position", "not_found"}
 UNSURE_FILE = "unsure.json"  # in the text folder: chapter name → {"unsure": [...], "homographs": [...]}
 RULES = os.path.join(os.path.dirname(__file__), "stress_rules.txt")  # for every book
-STRESS_INDEX = os.path.expanduser("~/.cache/audiobook-bot/stress.json")  # built by stress_index.py
 
 _accentor = None  # loaded on first use, not needed when the text is already saved
 _index = None
@@ -74,14 +78,29 @@ def stress_index() -> tuple[dict[str, list[str]], set[str]]:
     """Wiktionary stressed forms by plain word, and the lang-uk homograph list."""
     global _index
     if _index is None:
-        if os.path.exists(STRESS_INDEX):
-            with open(STRESS_INDEX, encoding="utf-8") as f:
-                data = json.load(f)
-            _index = data["forms"], set(data["homographs"])
-        else:
-            print(f"{STRESS_INDEX} not found, run stress_index.py; going on without it", file=sys.stderr)
-            _index = {}, set()
+        _index = load_index()
     return _index
+
+
+def load_index() -> tuple[dict[str, list[str]], set[str]]:
+    """The index, built on first use (~320 MB download, a few minutes); without it when the build fails."""
+    if not os.path.exists(index_builder.INDEX):
+        print("Building the stress index from Wiktionary (once, a few minutes)", file=sys.stderr)
+        try:
+            index_builder.build()
+        except Exception:  # noqa: BLE001  # the stresses are still placed by accentuk, only less exactly
+            logging.exception("Building the stress index failed; going on without it")
+            return {}, set()
+    with open(index_builder.INDEX, encoding="utf-8") as f:
+        data = json.load(f)
+    return data["forms"], set(data["homographs"])
+
+
+def ensure_stress_model() -> None:
+    """Downloads accentuk's light model (~450 MB, once) when it is not in its cache."""
+    if not (ACCENTUK_CACHE / "manifest.json").is_file():
+        print("Downloading the stress model (once, ~450 MB)", file=sys.stderr)
+        download_assets(light=True)
 
 
 def prepare_text(text: str, dictionary: str) -> tuple[str, list[str], list[str]]:
@@ -91,6 +110,7 @@ def prepare_text(text: str, dictionary: str) -> tuple[str, list[str], list[str]]
     if _accentor is None:
         from accentuk import Accentor
 
+        ensure_stress_model()
         _accentor = Accentor(mode="light")
     source = numbers_to_words(expand_abbreviations(text))
     forms, listed = stress_index()
