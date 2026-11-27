@@ -1,95 +1,53 @@
 # Dzhura
 
 <p align="center">
-  <img src="assets/repo-banner.svg" alt="Dzhura: a Telegram bot that translates books, voices audiobooks, makes karaoke and sums up YouTube videos" width="100%">
+  <img src="assets/repo-banner.svg" alt="Dzhura: a Telegram bot that sums up YouTube videos, translates and voices books, and makes karaoke" width="100%">
 </p>
 
 <p>
   <a href="https://github.com/dvasyliev/dzhura-helper-bot/actions/workflows/ci.yml"><img src="https://github.com/dvasyliev/dzhura-helper-bot/actions/workflows/ci.yml/badge.svg" alt="CI" height="20"></a>
   <a href="https://github.com/dvasyliev/dzhura-helper-bot/releases/latest"><img src="https://img.shields.io/github/v/release/dvasyliev/dzhura-helper-bot?label=release&amp;color=4A5BD4" alt="Latest release" height="20"></a>
-  <a href="https://core.telegram.org/bots"><img src="https://img.shields.io/badge/Telegram-26A5E4?logo=telegram&amp;logoColor=white" alt="Telegram" height="20"></a>
-  <a href="#how-it-works"><img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&amp;logoColor=white" alt="TypeScript" height="20"></a>
-  <a href="#how-it-works"><img src="https://img.shields.io/badge/Node-5FA04E?logo=nodedotjs&amp;logoColor=white" alt="Node" height="20"></a>
-  <a href="#how-it-works"><img src="https://img.shields.io/badge/Python-3776AB?logo=python&amp;logoColor=white" alt="Python" height="20"></a>
-  <a href="#quick-start"><img src="https://img.shields.io/badge/runs_on-Apple_Silicon-8E8E93?logo=apple&amp;logoColor=white" alt="Runs on Apple Silicon" height="20"></a>
-  <a href="https://claude.com/claude-code"><img src="https://img.shields.io/badge/built-Claude_Code-D97757?logo=claude&amp;logoColor=white" alt="Built with Claude Code" height="20"></a>
+  <a href="https://core.telegram.org/bots"><img src="https://img.shields.io/badge/Telegram-26A5E4?logo=telegram&amp;logoColor=white" alt="Telegram bot" height="20"></a>
+  <a href="https://github.com/dvasyliev/claude-plugins/tree/main/plugins/codebase-harness"><img src="assets/badges/codebase-harness.svg" alt="Built with the codebase-harness plugin" height="20"></a>
+  <a href="https://claude.com/claude-code"><img src="https://img.shields.io/badge/Claude_Code-D97757?logo=claude&amp;logoColor=white" alt="Claude Code" height="20"></a>
+  <a href="#features"><img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&amp;logoColor=white" alt="TypeScript" height="20"></a>
+  <a href="#features"><img src="https://img.shields.io/badge/Node-5FA04E?logo=nodedotjs&amp;logoColor=white" alt="Node" height="20"></a>
+  <a href="#features"><img src="https://img.shields.io/badge/Python-3776AB?logo=python&amp;logoColor=white" alt="Python" height="20"></a>
+  <a href="#quick-start"><img src="assets/badges/apple-silicon.svg" alt="Runs on Apple Silicon" height="20"></a>
+  <a href="https://huggingface.co/patriotyk/HolosTTS"><img src="https://img.shields.io/badge/UA_voice-HolosTTS-3B6EA5" alt="Ukrainian voice: HolosTTS" height="20"></a>
+  <a href="https://huggingface.co/hexgrad/Kokoro-82M"><img src="https://img.shields.io/badge/EN_voice-Kokoro--82M-8E6BB8" alt="English voice: Kokoro-82M" height="20"></a>
+  <a href="https://huggingface.co/mlx-community/whisper-large-v3-turbo"><img src="https://img.shields.io/badge/transcription-Whisper-3D8B7D" alt="Transcription: Whisper" height="20"></a>
+  <a href="https://github.com/nomadkaraoke/python-audio-separator"><img src="https://img.shields.io/badge/karaoke-Mel--Band_RoFormer-C0604A" alt="Karaoke vocal split: Mel-Band RoFormer" height="20"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-DFB317" alt="MIT license" height="20"></a>
 </p>
 
 <p>
   <a href="#features"><b>Features</b></a>
   &nbsp;&nbsp;&nbsp;
-  <a href="#how-it-works"><b>How it works</b></a>
-  &nbsp;&nbsp;&nbsp;
   <a href="#quick-start"><b>Quick start</b></a>
   &nbsp;&nbsp;&nbsp;
   <a href="#contributing"><b>Contributing</b></a>
 </p>
 
-A personal Telegram helper bot that runs on your own Mac. A *dzhura* was a Cossack's young helper who carried out any errand; this one turns books into audiobooks, translates them into Ukrainian, turns songs into karaoke and sums up YouTube videos. It answers only its owner, and voicing and karaoke run locally on Apple Silicon.
+A personal Telegram bot that runs on your own Mac. It sums up YouTube videos, translates and voices books, and makes karaoke from songs. It answers only its owner.
 
 ## Features
 
-| Feature | Description | Languages | Implementation | Status |
-|---|---|---|---|---|
-| 🎧 Audiobook | Voices EPUB and text PDF books and sends them to Telegram as an mp3 per chapter. | en/ua | HolosTTS (ua), Kokoro-82M (en), docling (PDF) | works |
-| 🎤 Karaoke | Makes karaoke videos from YouTube songs, with the words lighting up as they are sung, and sends them to Telegram or to your personal YouTube playlist. | en/ua/ru | Mel-Band RoFormer, Whisper, MMS | works |
-| 🌐 Book translation | Translates EPUB and PDF books and sends the translated book to Telegram. | en/ru → ua | Claude, spaCy, pymorphy3, pandoc | works |
-| 📘 PDF → EPUB | Turns a text PDF book into an EPUB and sends it to Telegram. | any | docling, pandoc | works |
-| 📝 YouTube summary | Sums up a YouTube video, brief or detailed, in Ukrainian (and in English for an English video), with an audio version, and sends it to Telegram. | en/ua/ru | Whisper, Claude, HolosTTS (ua), Kokoro-82M (en) | works |
+### 📝 YouTube video → Summary → Voice-over
 
-Voicing and karaoke models run locally on Apple Silicon; translation and summaries go through Claude.
+Send a link to a YouTube video and get a summary in Ukrainian (and in English for an English video), brief or detailed, with times that link to that moment of the video. Then have it voiced: a woman's or a man's voice reads it to you.
 
-## Library group
+### 📚 Book → Translation → Audiobook
 
-Everything the bot makes can also go to a Telegram group of your own, so books and songs don't get lost in the chat history:
+Send an EPUB or PDF book. Translate it into Ukrainian from English or Russian, then voice the translation as an audiobook, an mp3 per chapter. A Ukrainian or English book can be voiced right away, and a text PDF can be turned into an EPUB.
 
-- **a topic per book**: a pinned contents message, the original, the Ukrainian translation and the chapters of every voice in order;
-- **one 🎤 Karaoke topic** with every song, where a missing version has a "Make it" button;
-- **one 📝 Summary topic** with every summed-up video, its summary and its audio;
-- **updates in place**: a re-voiced chapter or a new translation replaces the old file in its message.
+### 🎤 YouTube song → Karaoke
 
-Your private chat with the bot stays the control panel: you send books and links there, and the bot's ✅ Done message links to the result in the group. You can invite family and friends to the group to listen and download; the bot still takes orders only from you. Setting it up takes two minutes: [docs/library-group.md](docs/library-group.md).
+Send a link to a YouTube song and get a karaoke video with the words lighting up as they are sung: music only, with the singer's vocals, or both. Works for English, Ukrainian and Russian songs.
 
-## How it works
+### Where it runs
 
-### 🎧 Audiobook
-
-The bot first gets plain text out of the book. An EPUB is unpacked with [JSZip](https://github.com/Stuk/jszip) and its chapters are read with [node-html-parser](https://github.com/taoqf/node-html-parser). A PDF is checked with [pypdfium2](https://github.com/pypdfium2-team/pypdfium2) to make sure it has a text layer and is not a scan, and then [docling](https://github.com/docling-project/docling) turns it into Markdown once, so later loads read chapters straight from that file.
-
-Before a Ukrainian book is voiced, its text is prepared so the model reads it correctly: [num2words](https://github.com/savoirfairelinux/num2words) spells out the numbers, [accentuk](https://pypi.org/project/accentuk/) places the stresses, and [ipa-uk](https://github.com/patriotyk/ipa-uk) turns the words into phonemes. [HolosTTS](https://huggingface.co/patriotyk/HolosTTS) then reads them through [holos-tts-mlx](https://pypi.org/project/holos-tts-mlx/). An English book needs less preparation: [misaki](https://github.com/hexgrad/misaki) turns the text into phonemes, and [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) reads it through [mlx-audio](https://github.com/Blaizzy/mlx-audio).
-
-In both cases [lameenc](https://github.com/chrisstaite/lameenc) saves each chapter as an mp3, which the bot sends to Telegram as soon as it is ready.
-
-### 🎤 Karaoke
-
-[yt-dlp](https://github.com/yt-dlp/yt-dlp) downloads the clip, and [Mel-Band RoFormer](https://github.com/nomadkaraoke/python-audio-separator), run through [audio-separator](https://github.com/nomadkaraoke/python-audio-separator), splits the singer's voice from the music.
-
-The bot then needs the words and the moment each one is sung. [Whisper large-v3-turbo](https://huggingface.co/mlx-community/whisper-large-v3-turbo), run through [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), listens to the voice and recognises the song's language and words. The bot looks up the real lyrics on [LRCLIB](https://lrclib.net) and compares them with what Whisper heard. Once the lyrics are settled, [ctc-forced-aligner](https://github.com/MahmoudAshraf97/ctc-forced-aligner) with the MMS model matches each word to the moment it is sung.
-
-Finally the video is put together. If the singing starts right away, [librosa](https://github.com/librosa/librosa) finds the song's beat so the bot can add a short count-in. [Pillow](https://github.com/python-pillow/Pillow) measures the subtitle lines so they fit on screen, and [ffmpeg](https://ffmpeg.org) with libass burns them into the video. The bot sends the result to Telegram, or uploads it to your playlist through the [YouTube Data API](https://developers.google.com/youtube/v3).
-
-### 🌐 Book translation
-
-The book is translated from the same Markdown the bot already makes for PDFs. First the bot collects the names worth keeping consistent: [spaCy](https://spacy.io) finds the named entities. [Claude](https://www.anthropic.com/claude), called through `claude -p`, turns them into a glossary in one call, with the Ukrainian title and author.
-
-Claude then translates the book part by part, getting with each part the glossary lines for the names in it. A Python script checks each translation without a model. It fixes the apostrophes, quotes and dialogue dashes, and it flags letters of another alphabet, lost paragraphs, glossary names in the wrong form, and calques from the LanguageTool and [chysto](https://github.com/vladichumachenko/chysto-ukr-skills) tables, which [pymorphy3](https://github.com/no-plagiarism/pymorphy3) extends to other forms of a phrase. A part with problems gets a fix call, and a second one if letters of another alphabet are still left. [pandoc](https://pandoc.org) then builds the translated EPUB, and the book can be voiced right away.
-
-### 📝 YouTube summary
-
-A link to a YouTube video that is not a music clip goes to the summary; a music clip goes to karaoke. The bot first needs the video's words. It takes the subtitles people made for the video through [yt-dlp](https://github.com/yt-dlp/yt-dlp); YouTube's automatic subtitles are never used. Without them, [Whisper large-v3-turbo](https://huggingface.co/mlx-community/whisper-large-v3-turbo), run through [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), listens to the video's audio.
-
-[Claude](https://www.anthropic.com/claude), called through `claude -p`, first writes a short description of the video, and on a button press a brief or a detailed summary with times that link to that moment of the video, in Ukrainian and, for an English video, in English too. A summary can also be listened to: the same voices as the audiobooks read it, [HolosTTS](https://huggingface.co/patriotyk/HolosTTS) in Ukrainian and [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) in English, a little faster, with [ffmpeg](https://ffmpeg.org) changing the tempo.
-
-## Ideas
-
-Features that would reuse what is already here (Whisper, vocal separation, HolosTTS, Kokoro, yt-dlp, ffmpeg):
-
-- **Voice message to text**: forward a voice note or video note, get the text and a short summary.
-- **Article to audio**: send a link, get an mp3, the same pipeline as audiobooks.
-- **Backing track or a cappella**: music only or vocals only as an mp3, no video.
-- **Lyrics with translation**: a foreign song with a Ukrainian line under each sung line.
-- **Subtitles for any video**: an `.srt` and a video with burned-in subtitles, optionally translated.
+Voicing and karaoke run locally on Apple Silicon; translation and summaries go through Claude. Results can also go to a Telegram group of your own, a topic per book: [docs/library-group.md](docs/library-group.md). How each feature works inside: [docs/how-it-works.md](docs/how-it-works.md).
 
 ## Quick start
 
@@ -102,9 +60,7 @@ npm run setup   # Node and Python packages, and .env from .env.example
 npm start
 ```
 
-That is enough for audiobooks. The other features need a program or two each (pandoc, ffmpeg, Claude Code); the bot marks the ones it lacks in its menu and says what to install. The full guide, by hand or with an agent: [SETUP.md](SETUP.md).
-
-How each feature works inside: [docs/how-it-works.md](docs/how-it-works.md).
+That is enough for audiobooks. The other features need a program or two each (pandoc, ffmpeg, Claude Code); the bot marks the ones it lacks in its menu. Full guide: [SETUP.md](SETUP.md).
 
 <!-- COURSES:START -->
 ## My Educational Courses

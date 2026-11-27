@@ -1,11 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400">
   <style>
     text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
-    .scene { opacity: 0; animation: show 8s infinite both; }
-    .s2 { animation-delay: 2s; }
-    .s3 { animation-delay: 4s; }
-    .s4 { animation-delay: 6s; }
-    @keyframes show { 0% { opacity: 0 } 2.5% { opacity: 1 } 22.5% { opacity: 1 } 25% { opacity: 0 } 100% { opacity: 0 } }
+    .scene { opacity: 0; animation: show 12s infinite both; }
+    .step2 { animation: step2 12s infinite both; }
+    .step3 { animation: step3 12s infinite both; }
+    .s2, .s2 .step2, .s2 .step3 { animation-delay: 4s; }
+    .s3 { animation-delay: 8s; }
+    @keyframes show { 0% { opacity: 0 } 2% { opacity: 1 } 31.3% { opacity: 1 } 33.3% { opacity: 0 } 100% { opacity: 0 } }
+    @keyframes step2 { 0%, 6% { opacity: 0 } 9%, 100% { opacity: 1 } }
+    @keyframes step3 { 0%, 16% { opacity: 0 } 19%, 100% { opacity: 1 } }
     .dot { animation: blink 1s infinite both; }
     .d2 { animation-delay: .2s; } .d3 { animation-delay: .4s; }
     @keyframes blink { 0%, 100% { opacity: .2 } 40% { opacity: 1 } }
@@ -13,14 +16,14 @@
     @keyframes wave { from { transform: scaleY(.3) } to { transform: scaleY(1) } }
   </style>
   <defs>
+    <clipPath id="notes"><rect x="875" y="125" width="85" height="0">
+      <animate attributeName="height" dur="12s" repeatCount="indefinite" values="0;0;110;110" keyTimes="0;.09;.15;1"/>
+    </rect></clipPath>
     <clipPath id="line1"><rect x="830" y="130" height="50" width="0">
-      <animate attributeName="width" dur="8s" repeatCount="indefinite" values="0;0;300;300" keyTimes="0;.51;.6;1"/>
+      <animate attributeName="width" dur="12s" repeatCount="indefinite" values="0;0;300;300" keyTimes="0;.7;.78;1"/>
     </rect></clipPath>
     <clipPath id="line2"><rect x="830" y="190" height="50" width="0">
-      <animate attributeName="width" dur="8s" repeatCount="indefinite" values="0;0;300;300" keyTimes="0;.6;.7;1"/>
-    </rect></clipPath>
-    <clipPath id="notes"><rect x="970" y="125" width="80" height="0">
-      <animate attributeName="height" dur="8s" repeatCount="indefinite" values="0;0;110;110" keyTimes="0;.79;.94;1"/>
+      <animate attributeName="width" dur="12s" repeatCount="indefinite" values="0;0;300;300" keyTimes="0;.78;.86;1"/>
     </rect></clipPath>
   </defs>
 
@@ -29,45 +32,69 @@
   <!-- name and what it does -->
   <path d="M412 72 l8 19 19 8 -19 8 -8 19 -8 -19 -19 -8 19 -8 z" fill="#fff"/>
   <text x="70" y="170" font-size="92" font-weight="800" fill="#fff">Dzhura</text>
-  <text x="72" y="228" font-size="28" fill="#fff" fill-opacity=".85">A Telegram bot that translates books,</text>
-  <text x="72" y="268" font-size="28" fill="#fff" fill-opacity=".85">voices audiobooks, makes karaoke</text>
-  <text x="72" y="308" font-size="28" fill="#fff" fill-opacity=".85">and sums up YouTube videos.</text>
+  <text x="72" y="228" font-size="28" fill="#fff" fill-opacity=".85">A Telegram bot that sums up</text>
+  <text x="72" y="268" font-size="28" fill="#fff" fill-opacity=".85">YouTube videos, translates and</text>
+  <text x="72" y="308" font-size="28" fill="#fff" fill-opacity=".85">voices books, makes karaoke.</text>
 
   <rect x="640" y="60" width="500" height="240" rx="28" fill="#fff"/>
 
-  <!-- 1: translate -->
+  <!-- 1: summary, then its audio -->
   <g class="scene s1">
-    <rect x="720" y="115" width="105" height="140" rx="12" fill="#4A5BD4"/>
-    <rect x="732" y="115" width="6" height="140" fill="#fff" fill-opacity=".35"/>
-    <text x="778" y="198" font-size="36" font-weight="800" fill="#fff" text-anchor="middle">EN</text>
-    <circle class="dot" cx="860" cy="185" r="8" fill="#4A5BD4"/>
-    <circle class="dot d2" cx="890" cy="185" r="8" fill="#4A5BD4"/>
-    <circle class="dot d3" cx="920" cy="185" r="8" fill="#4A5BD4"/>
-    <rect x="955" y="115" width="105" height="140" rx="12" fill="#4A5BD4"/>
-    <rect x="967" y="115" width="6" height="140" fill="#fff" fill-opacity=".35"/>
-    <text x="1013" y="198" font-size="36" font-weight="800" fill="#fff" text-anchor="middle">UK</text>
-    <text x="890" y="355" font-size="30" font-weight="700" fill="#fff" text-anchor="middle">🌐 Translates books</text>
+    <rect x="670" y="140" width="120" height="90" rx="20" fill="#4A5BD4"/>
+    <path d="M718 167 l30 18 -30 18 z" fill="#fff"/>
+    <g class="step2">
+    <circle class="dot" cx="810" cy="185" r="6" fill="#4A5BD4"/>
+    <circle class="dot d2" cx="832" cy="185" r="6" fill="#4A5BD4"/>
+    <circle class="dot d3" cx="854" cy="185" r="6" fill="#4A5BD4"/>
+    <rect x="875" y="128" width="85" height="115" rx="12" fill="#4A5BD4"/>
+    <g fill="#fff" fill-opacity=".75" clip-path="url(#notes)">
+      <rect x="889" y="148" width="57" height="8" rx="4"/>
+      <rect x="889" y="167" width="45" height="8" rx="4"/>
+      <rect x="889" y="186" width="57" height="8" rx="4"/>
+      <rect x="889" y="205" width="35" height="8" rx="4"/>
+    </g>
+    </g>
+    <g class="step3">
+    <circle class="dot" cx="980" cy="185" r="6" fill="#4A5BD4"/>
+    <circle class="dot d2" cx="1002" cy="185" r="6" fill="#4A5BD4"/>
+    <circle class="dot d3" cx="1024" cy="185" r="6" fill="#4A5BD4"/>
+    <g fill="#4A5BD4">
+      <rect class="bar" x="1045" y="155" width="10" height="60" rx="5"/>
+      <rect class="bar" x="1059" y="135" width="10" height="100" rx="5" style="animation-delay:-.3s"/>
+      <rect class="bar" x="1073" y="145" width="10" height="80" rx="5" style="animation-delay:-.6s"/>
+      <rect class="bar" x="1087" y="130" width="10" height="110" rx="5" style="animation-delay:-.15s"/>
+      <rect class="bar" x="1101" y="160" width="10" height="50" rx="5" style="animation-delay:-.45s"/>
+    </g>
+    </g>
+    <text x="890" y="355" font-size="25" font-weight="700" fill="#fff" text-anchor="middle">YouTube video → Summary → Voice-over</text>
   </g>
 
-  <!-- 2: audiobook -->
+  <!-- 2: books, translated, then voiced -->
   <g class="scene s2">
-    <g transform="translate(659 20) scale(.55)">
-      <path d="M128 282 v-28 a128 128 0 0 1 256 0 v28" fill="none" stroke="#4A5BD4" stroke-width="24" stroke-linecap="round"/>
-      <rect x="100" y="262" width="56" height="96" rx="22" fill="#4A5BD4"/>
-      <rect x="356" y="262" width="56" height="96" rx="22" fill="#4A5BD4"/>
-      <path d="M256 238 C222 214 190 208 168 212 V382 C194 378 226 384 256 404 Z" fill="#4A5BD4"/>
-      <path d="M256 238 C290 214 322 208 344 212 V382 C318 378 286 384 256 404 Z" fill="#4A5BD4"/>
-      <path d="M188 250 C206 248 224 252 240 262 M188 284 C206 282 224 286 240 296 M188 318 C206 316 224 320 240 330 M272 262 C288 252 306 248 324 250 M272 296 C288 286 306 282 324 284 M272 330 C288 320 306 316 324 318" stroke="#fff" stroke-opacity=".6" stroke-width="7" stroke-linecap="round" fill="none"/>
+    <rect x="685" y="128" width="85" height="115" rx="12" fill="#4A5BD4"/>
+    <rect x="695" y="128" width="5" height="115" fill="#fff" fill-opacity=".35"/>
+    <text x="732" y="196" font-size="30" font-weight="800" fill="#fff" text-anchor="middle">EN</text>
+    <g class="step2">
+    <circle class="dot" cx="790" cy="185" r="6" fill="#4A5BD4"/>
+    <circle class="dot d2" cx="812" cy="185" r="6" fill="#4A5BD4"/>
+    <circle class="dot d3" cx="834" cy="185" r="6" fill="#4A5BD4"/>
+    <rect x="855" y="128" width="85" height="115" rx="12" fill="#4A5BD4"/>
+    <rect x="865" y="128" width="5" height="115" fill="#fff" fill-opacity=".35"/>
+    <text x="902" y="196" font-size="30" font-weight="800" fill="#fff" text-anchor="middle">UK</text>
     </g>
+    <g class="step3">
+    <circle class="dot" cx="960" cy="185" r="6" fill="#4A5BD4"/>
+    <circle class="dot d2" cx="982" cy="185" r="6" fill="#4A5BD4"/>
+    <circle class="dot d3" cx="1004" cy="185" r="6" fill="#4A5BD4"/>
     <g fill="#4A5BD4">
-      <rect class="bar" x="950" y="150" width="12" height="70" rx="6"/>
-      <rect class="bar" x="970" y="125" width="12" height="120" rx="6" style="animation-delay:-.3s"/>
-      <rect class="bar" x="990" y="140" width="12" height="90" rx="6" style="animation-delay:-.6s"/>
-      <rect class="bar" x="1010" y="115" width="12" height="140" rx="6" style="animation-delay:-.15s"/>
-      <rect class="bar" x="1030" y="145" width="12" height="80" rx="6" style="animation-delay:-.45s"/>
-      <rect class="bar" x="1050" y="160" width="12" height="50" rx="6" style="animation-delay:-.75s"/>
+      <rect class="bar" x="1025" y="155" width="10" height="60" rx="5"/>
+      <rect class="bar" x="1039" y="135" width="10" height="100" rx="5" style="animation-delay:-.3s"/>
+      <rect class="bar" x="1053" y="145" width="10" height="80" rx="5" style="animation-delay:-.6s"/>
+      <rect class="bar" x="1067" y="130" width="10" height="110" rx="5" style="animation-delay:-.15s"/>
+      <rect class="bar" x="1081" y="160" width="10" height="50" rx="5" style="animation-delay:-.45s"/>
     </g>
-    <text x="890" y="355" font-size="30" font-weight="700" fill="#fff" text-anchor="middle">🎧 Voices audiobooks</text>
+    </g>
+    <text x="890" y="355" font-size="25" font-weight="700" fill="#fff" text-anchor="middle">Book → Translation → Audiobook</text>
   </g>
 
   <!-- 3: karaoke -->
@@ -79,23 +106,6 @@
     <text x="830" y="230" font-size="40" font-weight="800" fill="#C9CEF3">word by word</text>
     <text x="830" y="170" font-size="40" font-weight="800" fill="#4A5BD4" clip-path="url(#line1)">Sing along,</text>
     <text x="830" y="230" font-size="40" font-weight="800" fill="#4A5BD4" clip-path="url(#line2)">word by word</text>
-    <text x="890" y="355" font-size="30" font-weight="700" fill="#fff" text-anchor="middle">🎤 Makes karaoke</text>
-  </g>
-
-  <!-- 4: summary -->
-  <g class="scene s4">
-    <rect x="705" y="135" width="140" height="100" rx="22" fill="#4A5BD4"/>
-    <path d="M760 165 l32 20 -32 20 z" fill="#fff"/>
-    <circle class="dot" cx="870" cy="185" r="8" fill="#4A5BD4"/>
-    <circle class="dot d2" cx="900" cy="185" r="8" fill="#4A5BD4"/>
-    <circle class="dot d3" cx="930" cy="185" r="8" fill="#4A5BD4"/>
-    <rect x="955" y="115" width="105" height="140" rx="12" fill="#4A5BD4"/>
-    <g fill="#fff" fill-opacity=".75" clip-path="url(#notes)">
-      <rect x="972" y="140" width="71" height="9" rx="4.5"/>
-      <rect x="972" y="162" width="56" height="9" rx="4.5"/>
-      <rect x="972" y="184" width="71" height="9" rx="4.5"/>
-      <rect x="972" y="206" width="44" height="9" rx="4.5"/>
-    </g>
-    <text x="890" y="355" font-size="30" font-weight="700" fill="#fff" text-anchor="middle">📝 Sums up videos</text>
+    <text x="890" y="355" font-size="25" font-weight="700" fill="#fff" text-anchor="middle">YouTube song → Karaoke</text>
   </g>
 </svg>
