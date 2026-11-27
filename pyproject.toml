@@ -1,6 +1,6 @@
 [project]
 name = "dzhura-helper-bot"
-version = "0.13.0"
+version = "0.13.1"
 description = "Python side of the Dzhura bot: audiobook voicing and karaoke"
 requires-python = ">=3.12,<3.15"
 dependencies = [

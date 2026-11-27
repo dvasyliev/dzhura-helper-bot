@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.1 (2026-11-27)
+
+### Other
+
+- shared code in src/lib, one Python package, audit fixes (2f7c44f)
+
 ## 0.13.0 (2026-11-26)
 
 ### Features
