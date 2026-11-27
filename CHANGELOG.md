@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.1 (2026-11-27)
+
+### Other
+
+- a shorter readme with the features as steps (a65a3ac)
+
 ## 0.15.0 (2026-11-27)
 
 ### Features
