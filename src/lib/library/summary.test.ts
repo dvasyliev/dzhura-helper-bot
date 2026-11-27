@@ -5,12 +5,17 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { saveState } from "./state.ts";
 import {
+  audioMenu,
   findVideo,
   newVideoDir,
   setMaking,
+  showSummary,
+  shownSummary,
   summaryItems,
+  summaryMenu,
   syncSummaries,
   videoFolderName,
+  videoLanguages,
 } from "./summary.ts";
 
 vi.mock("../telegram/owner.ts", () => ({ ownerId: () => 7 }));
@@ -21,12 +26,13 @@ async function video(
   title: string,
   at: number,
   levels: string[] = [],
+  language?: string,
 ) {
   const dir = join(root, `Channel - ${id}`);
   await mkdir(dir, { recursive: true });
   await writeFile(
     join(dir, "meta.json"),
-    JSON.stringify({ id, title, categories: [], chapters: [] }),
+    JSON.stringify({ id, title, categories: [], chapters: [], language }),
   );
   await writeFile(join(dir, "about.md"), "Про що.\n\nЩо каже.\n");
   await utimes(join(dir, "about.md"), at, at);
@@ -84,28 +90,20 @@ describe("video folders", () => {
 });
 
 describe("summaryItems", () => {
-  it("gives each video its description, then each level's file or a placeholder to make it, oldest first", async () => {
+  it("gives each video its card, then its summary and audio slots, oldest first", async () => {
     const root = await mkdtemp(join(tmpdir(), "summary-"));
-    await video(root, "bbbbbbbbbbb", "Second / talk", 2000, [
-      "brief",
-      "detailed",
-    ]);
-    await video(root, "aaaaaaaaaaa", "First", 1000, ["detailed"]);
+    await video(root, "bbbbbbbbbbb", "Second / talk", 2000, ["detailed"]);
+    await video(root, "aaaaaaaaaaa", "First", 1000);
     await mkdir(join(root, "ccccccccccc")); // not described yet
     const items = await summaryItems(root);
-    const level = (id: string, l: string) => [
-      `${id}/${l}/title`,
-      `${id}/${l}`,
-      `${id}/${l}/audio`,
-    ];
     expect(items.map((i) => i.key)).toEqual([
       "contents",
       "aaaaaaaaaaa/about",
-      ...level("aaaaaaaaaaa", "brief"),
-      ...level("aaaaaaaaaaa", "detailed"),
+      "aaaaaaaaaaa/summary",
+      "aaaaaaaaaaa/audio",
       "bbbbbbbbbbb/about",
-      ...level("bbbbbbbbbbb", "brief"),
-      ...level("bbbbbbbbbbb", "detailed"),
+      "bbbbbbbbbbb/summary",
+      "bbbbbbbbbbb/audio",
     ]);
     const byKey = (key: string) => items.find((i) => i.key === key);
     expect(byKey("aaaaaaaaaaa/about")).toEqual({
@@ -113,65 +111,123 @@ describe("summaryItems", () => {
       kind: "text",
       text: "📝 <b>First</b>\nhttps://youtu.be/aaaaaaaaaaa\n\nПро що.\n\nЩо каже.",
       preview: "https://i.ytimg.com/vi/aaaaaaaaaaa/maxresdefault.jpg",
+      buttons: [{ text: "📝 Summary", data: "summary:text:aaaaaaaaaaa" }],
     });
-    expect(byKey("aaaaaaaaaaa/brief/title")).toEqual({
-      key: "aaaaaaaaaaa/brief/title",
+    expect(byKey("aaaaaaaaaaa/summary")).toEqual({
+      key: "aaaaaaaaaaa/summary",
       kind: "text",
-      text: "📋 <b>Brief summary</b>",
+      text: "📝 Summary",
     });
-    expect(byKey("aaaaaaaaaaa/brief")).toEqual({
-      key: "aaaaaaaaaaa/brief",
+    expect(byKey("aaaaaaaaaaa/audio")).toEqual({
+      key: "aaaaaaaaaaa/audio",
       kind: "text",
-      text: "No document yet",
-      buttons: [{ text: "✨ Generate", data: "summary:brief:aaaaaaaaaaa" }],
+      text: "🎧 Audio",
     });
-    expect(byKey("aaaaaaaaaaa/brief/audio")).toEqual({
-      key: "aaaaaaaaaaa/brief/audio",
-      kind: "text",
-      text: "No audio yet",
-      buttons: [
-        { text: "🎙 Oksana", data: "summary:voice:brief:aaaaaaaaaaa:Oksana" },
-        { text: "🎙 Andrii", data: "summary:voice:brief:aaaaaaaaaaa:Andrii" },
-      ],
+    // Only the detailed summary is written: it is the one shown.
+    expect(byKey("bbbbbbbbbbb/summary")).toEqual(
+      expect.objectContaining({
+        kind: "document",
+        file: join(root, "Channel - bbbbbbbbbbb", "detailed.md"),
+        name: "Detailed: Second _ talk.md",
+        caption: "📝 <b>Detailed Summary (UA)</b>",
+      }),
+    );
+    expect(byKey("bbbbbbbbbbb/about")).toHaveProperty("buttons", [
+      { text: "📝 Summary", data: "summary:text:bbbbbbbbbbb" },
+      { text: "🎧 Audio", data: "summary:audio:bbbbbbbbbbb" },
+    ]);
+  });
+
+  it("shows the shown version and its audio, named after the video", async () => {
+    const root = await mkdtemp(join(tmpdir(), "summary-"));
+    await video(root, "aaaaaaaaaaa", "Talk", 1000, ["brief"], "en");
+    const dir = join(root, "Channel - aaaaaaaaaaa");
+    await writeFile(join(dir, "brief.en.md"), "en");
+    await writeFile(join(dir, "brief - Heart.mp3"), "abc");
+    await showSummary(dir, { level: "brief", language: "en", voice: "Heart" });
+    const items = await summaryItems(root);
+    expect(items.find((i) => i.key === "aaaaaaaaaaa/summary")).toMatchObject({
+      file: join(dir, "brief.en.md"),
+      name: "Brief (EN): Talk.md",
+      caption: "📝 <b>Brief Summary (EN)</b>",
     });
-    expect(byKey("aaaaaaaaaaa/detailed/title")).toMatchObject({
-      text: "📖 <b>Detailed summary</b>",
-    });
-    const doc = byKey("bbbbbbbbbbb/brief");
-    expect(doc).toMatchObject({
-      kind: "document",
-      file: join(root, "Channel - bbbbbbbbbbb", "brief.md"),
-      name: "Second _ talk (стисло).md",
-    });
-    expect(doc).not.toHaveProperty("caption");
-    expect(byKey("bbbbbbbbbbb/detailed")).toMatchObject({
-      name: "Second _ talk (детально).md",
+    const audio = items.find((i) => i.key === "aaaaaaaaaaa/audio");
+    expect(audio).toEqual({
+      key: "aaaaaaaaaaa/audio",
+      kind: "audio",
+      file: join(dir, "brief - Heart.mp3"),
+      name: "Brief (EN): Talk.mp3",
+      title: "Brief (EN): Talk",
+      performer: "Talk",
+      caption: "🎧 <b>Brief Audio (EN)</b>",
+      size: 3,
+      mtime: expect.any(Number),
     });
   });
 
-  it("puts the level's audio in its place once voiced, not while it is written", async () => {
+  it("falls back to the first version written, with its audio, without a shown.json of this shape", async () => {
     const root = await mkdtemp(join(tmpdir(), "summary-"));
-    await video(root, "aaaaaaaaaaa", "First / talk", 1000, [
-      "brief",
-      "detailed",
-    ]);
+    await video(root, "aaaaaaaaaaa", "Talk", 1000, ["detailed"], "en");
     const dir = join(root, "Channel - aaaaaaaaaaa");
-    await writeFile(join(dir, "brief - Oksana.mp3"), "abc");
-    await writeFile(join(dir, "detailed - Andrii.mp3.part"), "abc");
-    const items = await summaryItems(root);
-    const audio = items.find((i) => i.key === "aaaaaaaaaaa/brief/audio");
-    expect(audio).toMatchObject({
-      kind: "audio",
-      file: join(dir, "brief - Oksana.mp3"),
-      name: "First _ talk (стисло).mp3",
-      title: "First / talk (стисло)",
-      performer: "Oksana",
-      size: 3,
+    await writeFile(join(dir, "brief.en.md"), "en");
+    await writeFile(join(dir, "brief - George.mp3"), "a");
+    await writeFile(
+      join(dir, "shown.json"),
+      JSON.stringify({ brief: { language: "en", voices: {} } }),
+    );
+    const info = { language: "en" };
+    expect(await shownSummary(dir, info)).toEqual({
+      level: "brief",
+      language: "en",
+      voice: "George",
     });
-    expect(audio).not.toHaveProperty("caption");
+    // A saved version whose text is gone is not shown.
+    await showSummary(dir, { level: "brief", language: "uk" });
+    expect((await shownSummary(dir, info))?.language).toBe("en");
+    expect(await shownSummary(dir, { language: "uk" })).toEqual({
+      level: "detailed",
+      language: "uk",
+    });
+  });
+
+  it("menus the versions but the shown one, a row a level", () => {
+    const texts = (rows: { text: string }[][]) =>
+      rows.map((row) => row.map((b) => b.text));
+    const both = summaryMenu("aaaaaaaaaaa", ["uk", "en"], {
+      level: "brief",
+      language: "en",
+    });
+    expect(texts(both)).toEqual([
+      ["Brief (UA)"],
+      ["Detailed (UA)", "Detailed (EN)"],
+      ["← Back"],
+    ]);
+    expect(both[0]![0]!.data).toBe("summary:pick:aaaaaaaaaaa:brief:uk");
+    expect(both.at(-1)![0]!.data).toBe("summary:back:aaaaaaaaaaa");
+    expect(texts(summaryMenu("aaaaaaaaaaa", ["uk"]))).toEqual([
+      ["Brief", "Detailed"],
+      ["← Back"],
+    ]);
+  });
+
+  it("menus the voices of the shown language as a woman and a man, but the one playing", () => {
     expect(
-      items.find((i) => i.key === "aaaaaaaaaaa/detailed/audio"),
-    ).toMatchObject({ kind: "text", text: "No audio yet" });
+      audioMenu("aaaaaaaaaaa", {
+        level: "brief",
+        language: "uk",
+        voice: "Oksana",
+      }),
+    ).toEqual([
+      [{ text: "👨 Man (UA)", data: "summary:voice:aaaaaaaaaaa:Andrii" }],
+      [{ text: "← Back", data: "summary:back:aaaaaaaaaaa" }],
+    ]);
+    expect(
+      audioMenu("aaaaaaaaaaa", { level: "brief", language: "en" })[0]!.map(
+        (b) => b.text,
+      ),
+    ).toEqual(["👩 Woman (EN)", "👨 Man (EN)"]);
+    expect(videoLanguages({ language: "en-US" })).toEqual(["uk", "en"]);
+    expect(videoLanguages({})).toEqual(["uk"]);
   });
 
   it("starts with a pinned contents: each video's title, a link to its description once posted", async () => {
@@ -203,37 +259,83 @@ describe("summaryItems", () => {
     expect(text).not.toContain("• 0 x");
   });
 
-  it("shows a document or audio being made without buttons", async () => {
+  it("shows ⏳ on a slot being made", async () => {
     const root = await mkdtemp(join(tmpdir(), "summary-"));
-    await video(root, "aaaaaaaaaaa", "First", 1000);
+    await video(root, "aaaaaaaaaaa", "First", 1000, ["brief"]);
     const at = async (key: string) =>
       (await summaryItems(root)).find((i) => i.key === key);
-    setMaking("aaaaaaaaaaa/detailed", true);
-    setMaking("aaaaaaaaaaa/detailed/audio", true);
-    expect(await at("aaaaaaaaaaa/detailed")).toEqual({
-      key: "aaaaaaaaaaa/detailed",
-      kind: "text",
-      text: "Generating document…",
-    });
-    expect(await at("aaaaaaaaaaa/detailed/audio")).toEqual({
-      key: "aaaaaaaaaaa/detailed/audio",
-      kind: "text",
-      text: "Voicing audio…",
-    });
-    setMaking("aaaaaaaaaaa/detailed", false);
-    setMaking("aaaaaaaaaaa/detailed/audio", false);
-    expect(await at("aaaaaaaaaaa/detailed")).toHaveProperty("buttons");
-    expect(await at("aaaaaaaaaaa/detailed/audio")).toHaveProperty("buttons");
+    setMaking("aaaaaaaaaaa/summary", true, "Detailed Summary (UA)");
+    setMaking("aaaaaaaaaaa/audio", true, "Detailed Audio (UA)");
+    expect(await at("aaaaaaaaaaa/summary")).toHaveProperty(
+      "caption",
+      "<b>⏳ Processing: Detailed Summary (UA)</b>",
+    );
+    expect(await at("aaaaaaaaaaa/audio")).toHaveProperty(
+      "text",
+      "<b>⏳ Processing: Detailed Audio (UA)</b>",
+    );
+    setMaking("aaaaaaaaaaa/summary", false);
+    setMaking("aaaaaaaaaaa/audio", false);
+    expect(await at("aaaaaaaaaaa/audio")).toHaveProperty("text", "🎧 Audio");
   });
 });
 
+/** A temp folder's summary root and library state file. */
+async function syncDirs() {
+  const root = await mkdtemp(join(tmpdir(), "summary-sync-"));
+  return { summary: join(root, "summary"), state: join(root, "library.json") };
+}
+
 describe("syncSummaries", () => {
-  it("posts them in the «📝 Summary» topic", async () => {
-    const root = await mkdtemp(join(tmpdir(), "summary-sync-"));
-    const dirs = {
-      summary: join(root, "summary"),
-      state: join(root, "library.json"),
+  it("moves the brief messages into the slots and deletes the detailed ones, keeping every other message in place", async () => {
+    const dirs = await syncDirs();
+    await video(dirs.summary, "aaaaaaaaaaa", "First", 1000);
+    const keys = [
+      "contents",
+      "aaaaaaaaaaa/about",
+      "aaaaaaaaaaa/brief/title",
+      "aaaaaaaaaaa/brief",
+      "aaaaaaaaaaa/brief/audio",
+      "aaaaaaaaaaa/detailed/title",
+      "aaaaaaaaaaa/detailed",
+      "aaaaaaaaaaa/detailed/audio",
+    ];
+    await saveState(
+      {
+        chatId: -100,
+        topics: {
+          summary: {
+            threadId: 9,
+            messages: keys.map((key, i) => ({
+              key,
+              messageId: i + 1,
+              kind: "text" as const,
+              version: "old",
+            })),
+            tooBig: {},
+          },
+        },
+      },
+      dirs.state,
+    );
+    const api = {
+      editForumTopic: vi.fn(async () => true),
+      editMessageText: vi.fn(async () => true),
+      deleteMessage: vi.fn(async () => true),
+      sendMessage: vi.fn(async () => ({ message_id: 99 })),
     };
+    await syncSummaries(api as unknown as Api, dirs);
+    expect(api.deleteMessage.mock.calls).toEqual([
+      [-100, 3],
+      [-100, 6],
+      [-100, 7],
+      [-100, 8],
+    ]);
+    expect(api.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("posts them in the «📝 Summary» topic", async () => {
+    const dirs = await syncDirs();
     await video(dirs.summary, "aaaaaaaaaaa", "First", 1000, ["brief"]);
     await saveState({ chatId: -100, topics: {} }, dirs.state);
     let next = 1;
@@ -255,12 +357,8 @@ describe("syncSummaries", () => {
     expect(synced?.changed).toEqual([
       "contents",
       "aaaaaaaaaaa/about",
-      "aaaaaaaaaaa/brief/title",
-      "aaaaaaaaaaa/brief",
-      "aaaaaaaaaaa/brief/audio",
-      "aaaaaaaaaaa/detailed/title",
-      "aaaaaaaaaaa/detailed",
-      "aaaaaaaaaaa/detailed/audio",
+      "aaaaaaaaaaa/summary",
+      "aaaaaaaaaaa/audio",
     ]);
     // A second pass links the description in the contents.
     expect(api.editMessageText).toHaveBeenCalledWith(

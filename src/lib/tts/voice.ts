@@ -12,6 +12,9 @@ export type Voice = {
   name: string;
   provider: Provider;
   language: Language;
+  gender: "woman" | "man";
+  /** Set on the voices a summary offers: how much faster than an audiobook it reads one. */
+  summaryTempo?: number;
 };
 
 const byLanguage = z
@@ -22,6 +25,8 @@ const byLanguage = z
         id: z.string(),
         name: z.string(),
         provider: z.enum(["holos", "kokoro"]),
+        gender: z.enum(["woman", "man"]),
+        summaryTempo: z.number().positive().optional(),
       }),
     ),
   )
@@ -37,6 +42,11 @@ export const VOICES: Voice[] = Object.entries(byLanguage).flatMap(
 
 export function voicesFor(language: Language): Voice[] {
   return VOICES.filter((v) => v.language === language);
+}
+
+/** The voices a summary in `language` offers, in voices.json order. */
+export function summaryVoices(language: Language): Voice[] {
+  return voicesFor(language).filter((v) => v.summaryTempo);
 }
 
 export type VoiceJob = {

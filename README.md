@@ -1,16 +1,18 @@
 # Dzhura
 
 <p align="center">
-  <img src="assets/repo-banner.svg" alt="Dzhura: a Telegram bot that translates books, voices audiobooks and makes karaoke" width="100%">
+  <img src="assets/repo-banner.svg" alt="Dzhura: a Telegram bot that translates books, voices audiobooks, makes karaoke and sums up YouTube videos" width="100%">
 </p>
 
 <p>
   <a href="https://github.com/dvasyliev/dzhura-helper-bot/actions/workflows/ci.yml"><img src="https://github.com/dvasyliev/dzhura-helper-bot/actions/workflows/ci.yml/badge.svg" alt="CI" height="20"></a>
   <a href="https://github.com/dvasyliev/dzhura-helper-bot/releases/latest"><img src="https://img.shields.io/github/v/release/dvasyliev/dzhura-helper-bot?label=release&amp;color=4A5BD4" alt="Latest release" height="20"></a>
-  <a href="https://core.telegram.org/bots"><img src="https://img.shields.io/badge/bot-Telegram-26A5E4?logo=telegram&amp;logoColor=white" alt="Telegram bot" height="20"></a>
+  <a href="https://core.telegram.org/bots"><img src="https://img.shields.io/badge/Telegram-26A5E4?logo=telegram&amp;logoColor=white" alt="Telegram" height="20"></a>
+  <a href="#how-it-works"><img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&amp;logoColor=white" alt="TypeScript" height="20"></a>
+  <a href="#how-it-works"><img src="https://img.shields.io/badge/Node-5FA04E?logo=nodedotjs&amp;logoColor=white" alt="Node" height="20"></a>
+  <a href="#how-it-works"><img src="https://img.shields.io/badge/Python-3776AB?logo=python&amp;logoColor=white" alt="Python" height="20"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/runs_on-Apple_Silicon-8E8E93?logo=apple&amp;logoColor=white" alt="Runs on Apple Silicon" height="20"></a>
   <a href="https://claude.com/claude-code"><img src="https://img.shields.io/badge/built-Claude_Code-D97757?logo=claude&amp;logoColor=white" alt="Built with Claude Code" height="20"></a>
-  <a href="https://github.com/dvasyliev"><img src="https://img.shields.io/badge/creator-@dvasyliev-181717?logo=github&amp;logoColor=white" alt="Creator: @dvasyliev" height="20"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-DFB317" alt="MIT license" height="20"></a>
 </p>
 
@@ -24,7 +26,7 @@
   <a href="#contributing"><b>Contributing</b></a>
 </p>
 
-A personal Telegram helper bot that runs on your own Mac. A *dzhura* was a Cossack's young helper who carried out any errand; this one turns books into audiobooks, translates them into Ukrainian and turns songs into karaoke. It answers only its owner, and voicing and karaoke run locally on Apple Silicon.
+A personal Telegram helper bot that runs on your own Mac. A *dzhura* was a Cossack's young helper who carried out any errand; this one turns books into audiobooks, translates them into Ukrainian, turns songs into karaoke and sums up YouTube videos. It answers only its owner, and voicing and karaoke run locally on Apple Silicon.
 
 ## Features
 
@@ -33,9 +35,9 @@ A personal Telegram helper bot that runs on your own Mac. A *dzhura* was a Cossa
 | 🎧 Audiobook | Voices EPUB and text PDF books and sends them to Telegram as an mp3 per chapter. | en/ua | HolosTTS (ua), Kokoro-82M (en), docling (PDF) | works |
 | 🎤 Karaoke | Makes karaoke videos from YouTube songs, with the words lighting up as they are sung, and sends them to Telegram or to your personal YouTube playlist. | en/ua/ru | Mel-Band RoFormer, Whisper, MMS | works |
 | 🌐 Book translation | Translates EPUB and PDF books and sends the translated book to Telegram. | en/ru → ua | Claude, spaCy, pymorphy3, pandoc | works |
-| 📝 YouTube summary | Retells a YouTube video in a few paragraphs and sends the summary to Telegram. | en/ua/ru | — | soon |
+| 📝 YouTube summary | Sums up a YouTube video, brief or detailed, in Ukrainian (and in English for an English video), with an audio version, and sends it to Telegram. | en/ua/ru | Whisper, Claude, HolosTTS (ua), Kokoro-82M (en) | works |
 
-Voicing and karaoke models run locally on Apple Silicon; translation goes through Claude.
+Voicing and karaoke models run locally on Apple Silicon; translation and summaries go through Claude.
 
 ## Library group
 

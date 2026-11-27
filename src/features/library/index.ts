@@ -61,6 +61,13 @@ type Step = (
   progress: (done: number, total: number) => void,
 ) => Promise<Synced | undefined>;
 
+/** Songs or videos changed, not messages: the keys are `<item>/<part>`, and the contents message (no slash) is not counted. */
+function units(changed: string[]): number {
+  return new Set(
+    changed.filter((k) => k.includes("/")).map((k) => k.split("/")[0]),
+  ).size;
+}
+
 /**
  * Syncs every topic, checking each still exists; a book's missing info (cover, year, description; see bookInfo) is
  * made first, so its topic shows the cover. `show` gets the status (see publishStatus) as it changes, the last one
@@ -101,7 +108,8 @@ export async function publish(
     if (!synced) return show(publishStatus(rows, "stopped"), true);
     Object.assign(row, {
       state: "done",
-      changed: synced.changed.length,
+      changed:
+        i < folders.length ? synced.changed.length : units(synced.changed),
       link: synced.topic,
     });
   }

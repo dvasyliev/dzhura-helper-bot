@@ -16,5 +16,10 @@ describe("speechText", () => {
         "# T\n\n### Зміст\n\n- [0:00](https://youtu.be/x?t=0) Вступ\n- [1:44](https://youtu.be/x?t=104) Далі\n\n### Вступ\n\nТекст [посилання](https://a.b) тут.",
       ),
     ).toBe("T.\n\nВступ.\n\nТекст посилання тут.");
+    expect(
+      speechText(
+        "# T\n\n### Contents\n\n- [0:00](x) Intro\n\n### Intro\n\nText.",
+      ),
+    ).toBe("T.\n\nIntro.\n\nText.");
   });
 });

@@ -1,7 +1,10 @@
 import { bold, escape } from "../text/format.ts";
 
-/** The heading of each file's level. */
-export const LEVEL_NAMES = { brief: "Стисло", detailed: "Детально" } as const;
+/** The heading of each file's level, in the language of its text. */
+export const LEVEL_NAMES = {
+  uk: { brief: "Стисло", detailed: "Детально" },
+  en: { brief: "Brief", detailed: "Detailed" },
+} as const;
 
 /** Telegram's limit for a message's text. */
 const MAX_MESSAGE = 4096;

@@ -69,8 +69,8 @@ function topicGone(error: unknown): boolean {
   );
 }
 
-/** The row of buttons under a text item, if any. */
-function keyboard(item: TextItem): InlineKeyboard | undefined {
+/** The row of buttons under an item, if any. */
+export function keyboard(item: Item): InlineKeyboard | undefined {
   return item.buttons?.length
     ? InlineKeyboard.from([
         item.buttons.map((b) => InlineKeyboard.text(b.text, b.data)),
@@ -238,10 +238,11 @@ export async function syncTopic(
         reply_markup: keyboard(item),
       });
     } else if (old.kind === item.kind && sameFile(item, old)) {
-      // Only the caption changed: the file is not uploaded again, and its file_id stays.
+      // Only the caption or the buttons changed: the file is not uploaded again, and its file_id stays.
       await api.editMessageCaption(chatId, old.messageId, {
         ...HTML,
         caption: item.caption,
+        reply_markup: keyboard(item),
       });
       fileId = old.fileId;
     } else {
@@ -250,7 +251,11 @@ export async function syncTopic(
         mediaOptions(item),
       );
       fileId = fileIdOf(
-        await api.editMessageMedia(chatId, old.messageId, media),
+        await (item.buttons?.length
+          ? api.editMessageMedia(chatId, old.messageId, media, {
+              reply_markup: keyboard(item),
+            })
+          : api.editMessageMedia(chatId, old.messageId, media)),
       );
     }
     // A caption edit leaves a media message: it keeps its kind.
@@ -315,7 +320,11 @@ export async function syncTopic(
       };
     }
     const input = inputOf(item);
-    const options = { ...thread, ...mediaOptions(item) };
+    const options = {
+      ...thread,
+      ...mediaOptions(item),
+      ...(item.buttons?.length ? { reply_markup: keyboard(item) } : {}),
+    };
     const sent =
       item.kind === "audio"
         ? await api.sendAudio(chatId, input, options)

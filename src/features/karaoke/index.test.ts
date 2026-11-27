@@ -1,7 +1,6 @@
-import { Context, type Api } from "grammy";
-import type { Update } from "grammy/types";
 import { describe, expect, it, vi } from "vitest";
 import { syncKaraoke } from "../../lib/library/karaoke.ts";
+import { pressButton } from "../../lib/telegram/press.testing.ts";
 import { enableYoutube, karaoke } from "./index.ts";
 import { runKaraoke } from "./pipeline.ts";
 
@@ -95,19 +94,7 @@ function fakeApi() {
 
 /** The owner presses a «Make it» button in the library group. */
 async function pressMake(api: ReturnType<typeof fakeApi>, data: string) {
-  const group = { id: -1001, type: "supergroup", title: "Library" };
-  const update = {
-    update_id: 1,
-    callback_query: {
-      id: "q",
-      chat_instance: "c",
-      from: { id: 7, is_bot: false, first_name: "Owner" },
-      data,
-      message: { message_id: 9, date: 0, chat: group },
-    },
-  } as unknown as Update;
-  const ctx = new Context(update, api as unknown as Api, {} as Context["me"]);
-  await karaoke.composer!.middleware()(ctx, async () => {});
+  await pressButton(karaoke.composer!, api, data);
 }
 
 describe("karaoke make-it button", () => {
@@ -121,7 +108,7 @@ describe("karaoke make-it button", () => {
 });
 
 describe("karaoke done message", () => {
-  it("says the video was not added to the playlist", async () => {
+  it("says the video was not added to the playlist, then the time it took", async () => {
     vi.mocked(runKaraoke).mockImplementationOnce(async function* () {
       yield {
         video: "/k/Song/Song (Karaoke).mp4",
@@ -141,7 +128,9 @@ describe("karaoke done message", () => {
     await vi.waitFor(() =>
       expect(api.sendMessage).toHaveBeenCalledWith(
         7,
-        "✅ <b>Done</b> → https://t.me/c/1/2/3 (not added to the playlist)",
+        expect.stringMatching(
+          /^<b>✅ Done: Karaoke Music<\/b> - <a href="https:\/\/t\.me\/c\/1\/2\/3">S<\/a>\n\(not added to the playlist\)\n\n⏱ \d+ s$/,
+        ),
         { parse_mode: "HTML" },
       ),
     );

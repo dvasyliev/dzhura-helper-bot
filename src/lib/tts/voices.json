@@ -1,12 +1,46 @@
 {
   "uk": [
-    { "id": "Speaker_17", "name": "Oksana", "provider": "holos" },
-    { "id": "Speaker_36", "name": "Andrii", "provider": "holos" }
+    {
+      "id": "Speaker_17",
+      "name": "Oksana",
+      "provider": "holos",
+      "summaryTempo": 1.15,
+      "gender": "woman"
+    },
+    {
+      "id": "Speaker_36",
+      "name": "Andrii",
+      "provider": "holos",
+      "summaryTempo": 1.15,
+      "gender": "man"
+    }
   ],
   "en": [
-    { "id": "af_heart", "name": "Heart", "provider": "kokoro" },
-    { "id": "af_bella", "name": "Bella", "provider": "kokoro" },
-    { "id": "am_michael", "name": "Michael", "provider": "kokoro" },
-    { "id": "bm_george", "name": "George", "provider": "kokoro" }
+    {
+      "id": "af_heart",
+      "name": "Heart",
+      "provider": "kokoro",
+      "summaryTempo": 1,
+      "gender": "woman"
+    },
+    {
+      "id": "af_bella",
+      "name": "Bella",
+      "provider": "kokoro",
+      "gender": "woman"
+    },
+    {
+      "id": "am_michael",
+      "name": "Michael",
+      "provider": "kokoro",
+      "gender": "man"
+    },
+    {
+      "id": "bm_george",
+      "name": "George",
+      "provider": "kokoro",
+      "summaryTempo": 1,
+      "gender": "man"
+    }
   ]
 }

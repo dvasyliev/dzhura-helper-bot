@@ -10,16 +10,15 @@ import {
   safeFilename,
   translationFolder,
 } from "../../lib/shelf/names.ts";
-import { reportAi } from "../../lib/claude/ai-usage.ts";
+import { reportAi, spentText } from "../../lib/claude/ai-usage.ts";
 import { leftByPace, leftText } from "../../lib/text/eta.ts";
+import { bold, code, escape, HTML, quote } from "../../lib/text/format.ts";
 import {
-  bold,
-  code,
-  escape,
-  HTML,
-  problem,
-  quote,
-} from "../../lib/text/format.ts";
+  counter,
+  failureText,
+  statusText,
+  withLanguage,
+} from "../../lib/text/status.ts";
 import type { Book } from "../../lib/book/epub.ts";
 import { readInfo } from "../../lib/book/info.ts";
 import { parseMarkdown } from "../../lib/book/markdown.ts";
@@ -107,20 +106,23 @@ async function begin(
       notify(
         ctx.api,
         chatId,
-        `⚠️ ${bold("Translation stopped")}\n${problem(error)}\n\nContinue from the menu.`,
+        `${failureText(BOOK_TRANSLATION, error, source.title)}\n\nContinue from the menu.`,
       ),
     )
     .finally(() => (running = undefined));
 }
 
-/** «🌐 Translating «Book» / 3 of 80 parts · ≈12 min left» and, once Claude was called, its usage so far in a quote. */
+/** What a translation is called in the statuses. */
+const BOOK_TRANSLATION = withLanguage("Book Translation", "uk");
+
+/** «⏳ Processing: Book Translation (UA) - Book / 3/80 parts · ≈12 min left» and, once Claude was called, its usage so far in a quote. */
 export function progressText(
   title: string,
   { done, total, usage }: Progress,
   minutesLeft?: number,
 ): string {
   const left = minutesLeft === undefined ? "" : ` · ${leftText(minutesLeft)}`;
-  const text = `🌐 ${bold(`Translating «${escape(title)}»`)}\n${done} of ${total} parts${left}`;
+  const text = `${statusText("processing", BOOK_TRANSLATION, title)}\n${counter(done, total, "parts")}${left}`;
   return usage ? `${text}\n\n${quote(usageLines(usage))}` : text;
 }
 
@@ -181,16 +183,22 @@ async function run(ctx: Context, chatId: number, folder: string, source: Book) {
       epub,
       safeFilename(name),
       "uk-epub",
+      { what: BOOK_TRANSLATION, title: source.title },
     );
   console.log(`Translated «${source.title}». ${usageLines(usage).join(", ")}`);
-  await notify(ctx.api, chatId, reportText(report));
   // The whole book's usage, resumed runs included; the time is this run's.
-  await reportAi({
+  const record = {
     what: `🌐 Translation · ${name}`,
     ...(model ? { model } : {}),
     ms: Date.now() - started,
     usage,
-  });
+  };
+  await notify(
+    ctx.api,
+    chatId,
+    reportText(report, source.title, spentText(record)),
+  );
+  await reportAi(record, { message: false });
   const translated = await loadBook(translationFolder(folder));
   if (translated) await offer(ctx, translated, "uk");
 }
@@ -206,17 +214,17 @@ export function usageLines(usage: Usage): string[] {
   return [
     `Claude: ${usage.calls} calls`,
     `${compact.format(read)} tokens in · ${compact.format(usage.output)} out`,
-    `≈$${usage.costUsd.toFixed(2)} at API prices`,
+    `💵 ≈$${usage.costUsd.toFixed(2)} at API prices`,
   ];
 }
 
-/** The finish message (HTML): fixed parts, parts with problems left, and parts the checker failed on. */
-export function reportText(report: {
-  fixed: number;
-  problems: number;
-  unchecked: number;
-}): string {
-  const text = `✅ ${bold("Translation finished")}\n\n${quote([
+/** The finish message (HTML): fixed parts, parts with problems left, parts the checker failed on, then what it `spent`. */
+export function reportText(
+  report: { fixed: number; problems: number; unchecked: number },
+  title?: string,
+  spent?: string,
+): string {
+  const text = `${statusText("done", BOOK_TRANSLATION, title)}\n\n${quote([
     `Fixed ${report.fixed} parts`,
     `${report.problems} still have problems (see report.json)`,
     ...(report.unchecked
@@ -225,8 +233,10 @@ export function reportText(report: {
         ]
       : []),
   ])}`;
-  if (!report.unchecked) return text;
-  return `${text}\n\nTranslate the book again to check them; no part is translated twice.`;
+  const hint = report.unchecked
+    ? "\n\nTranslate the book again to check them; no part is translated twice."
+    : "";
+  return `${text}${hint}${spent ? `\n\n${spent}` : ""}`;
 }
 
 /** The menu button: what to send, and the translations not finished yet. */

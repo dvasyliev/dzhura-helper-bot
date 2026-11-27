@@ -15,6 +15,13 @@ import { isMusic, videoInfo } from "../../lib/video/info.ts";
 import { syncKaraoke, VERSION_NAMES } from "../../lib/library/karaoke.ts";
 import type { Feature } from "../../lib/feature/types.ts";
 import { leftText } from "../../lib/text/eta.ts";
+import { spentText } from "../../lib/claude/ai-usage.ts";
+import {
+  counter,
+  failureText,
+  statusText,
+  withLanguage,
+} from "../../lib/text/status.ts";
 import { estimate, expectedMinutes, friendly } from "./messages.ts";
 import {
   isSeparated,
@@ -61,10 +68,29 @@ export function enableYoutube(settings: {
   channel = youtube({ ...settings, storeFile: "data/youtube.json" });
 }
 
-/** «⏳ Recognising the singing… / 3/7 · ≈2 min left»; without YouTube there is no upload step. */
-function stepText(step: keyof typeof STEPS, minutesLeft: number): string {
+/** What a job is called in the statuses: «Karaoke Music (EN)», «Karaoke Music + Vocals (EN)». */
+type Named = { what: string; title?: string };
+
+/** «⏳ Processing: Karaoke Music (EN) - Title», then «3/7 · Recognising the singing · ≈2 min left»; without YouTube there is no upload step. */
+function stepText(
+  step: keyof typeof STEPS,
+  minutesLeft: number,
+  { what, title }: Named,
+): string {
   const steps = Object.keys(STEPS).filter((s) => channel || s !== "upload");
-  return `⏳ ${bold(`${STEPS[step]}…`)}\n${steps.indexOf(step) + 1}/${steps.length} · ${leftText(minutesLeft)}`;
+  return `${statusText("processing", what, title)}\n${counter(steps.indexOf(step) + 1, steps.length, "steps")} · ${STEPS[step]} · ${leftText(minutesLeft)}`;
+}
+
+/** The job's name and the song's title, read from YouTube. */
+async function named(job: KaraokeJob): Promise<Named> {
+  const info = await videoInfo(job.id);
+  const versions = job.versions
+    .map((v) => (v === "vocals" ? "Vocals" : "Music"))
+    .join(" + ");
+  return {
+    what: withLanguage(`Karaoke ${versions}`, info?.language),
+    title: info?.title,
+  };
 }
 
 type Clip = { url: string; id: string };
@@ -197,13 +223,14 @@ async function start(
     youtube: !!channel,
     versions: job.versions.length,
   });
+  const name = await named(job);
   const work = async () => {
     const started = Date.now();
     // Steps take very different times, so the time left is the estimate less the time gone.
     const left = () => Math.max(0, expected - (Date.now() - started) / 60_000);
     const status = await ctx.api.sendMessage(
       chatId,
-      stepText("download", left()),
+      stepText("download", left(), name),
       HTML,
     );
     const working = () =>
@@ -211,7 +238,7 @@ async function start(
     working();
     const ticker = setInterval(working, ACTION_EVERY_MS);
     try {
-      await follow(ctx, chatId, status.message_id, job, left);
+      await follow(ctx, chatId, status.message_id, job, left, name, started);
     } finally {
       clearInterval(ticker);
       await ctx.api.deleteMessage(chatId, status.message_id).catch(() => {}); // a leftover status line is harmless
@@ -221,7 +248,7 @@ async function start(
     ctx.api
       .sendMessage(
         chatId,
-        `⚠️ ${bold("Karaoke failed")}\n${problem(friendly(error))}`,
+        failureText(name.what, friendly(error), name.title),
         HTML,
       )
       .then(() => {}, console.error);
@@ -252,10 +279,12 @@ async function follow(
   statusId: number,
   job: KaraokeJob,
   left: () => number,
+  label: Named,
+  started: number,
 ) {
   const status = (step: keyof typeof STEPS) =>
     ctx.api
-      .editMessageText(chatId, statusId, stepText(step, left()), HTML)
+      .editMessageText(chatId, statusId, stepText(step, left(), label), HTML)
       .catch(() => {}); // a missed status edit is shown by the next step
   for await (const event of runKaraoke(job)) {
     if ("step" in event) {
@@ -296,17 +325,17 @@ async function follow(
           );
         }
       }
+      const spent = `\n\n${spentText({ ms: Date.now() - started })}`;
       const inLibrary = (await syncKaraoke(ctx.api))?.link(
         `${path.basename(path.dirname(event.video))}/${versionOf(name)}`,
       );
       if (inLibrary)
         await ctx.api.sendMessage(
           chatId,
-          `✅ ${bold("Done")} → ${escape(inLibrary)}${notInPlaylist ? " (not added to the playlist)" : ""}`,
+          `${statusText("done", label.what, label.title, inLibrary)}${notInPlaylist ? "\n(not added to the playlist)" : ""}${spent}`,
           HTML,
         );
-      else if (link)
-        await ctx.api.sendMessage(chatId, link, { parse_mode: "HTML" });
+      else if (link) await ctx.api.sendMessage(chatId, `${link}${spent}`, HTML);
       else await sendVideo(ctx, chatId, event);
     }
   }

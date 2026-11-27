@@ -5,13 +5,21 @@ import { progressText, reportText, translate, usageLines } from "./index.ts";
 describe("reportText", () => {
   it("names fixed parts and parts with problems", () => {
     expect(reportText({ fixed: 2, problems: 1, unchecked: 0 })).toBe(
-      "✅ <b>Translation finished</b>\n\n<blockquote>Fixed 2 parts\n1 still have problems (see report.json)</blockquote>",
+      "<b>✅ Done: Book Translation (UA)</b>\n\n<blockquote>Fixed 2 parts\n1 still have problems (see report.json)</blockquote>",
+    );
+  });
+
+  it("ends with Claude's usage when given", () => {
+    expect(
+      reportText({ fixed: 2, problems: 1, unchecked: 0 }, "Book", "🪙 usage"),
+    ).toBe(
+      "<b>✅ Done: Book Translation (UA)</b> - Book\n\n<blockquote>Fixed 2 parts\n1 still have problems (see report.json)</blockquote>\n\n🪙 usage",
     );
   });
 
   it("names the parts the checker could not check apart", () => {
     expect(reportText({ fixed: 0, problems: 1, unchecked: 3 })).toBe(
-      "✅ <b>Translation finished</b>\n\n<blockquote>Fixed 0 parts\n1 still have problems (see report.json)\n3 parts were not checked: the checker failed (see report.json)</blockquote>\n\nTranslate the book again to check them; no part is translated twice.",
+      "<b>✅ Done: Book Translation (UA)</b>\n\n<blockquote>Fixed 0 parts\n1 still have problems (see report.json)\n3 parts were not checked: the checker failed (see report.json)</blockquote>\n\nTranslate the book again to check them; no part is translated twice.",
     );
   });
 });
@@ -59,7 +67,7 @@ describe("usageLines", () => {
     ).toEqual([
       "Claude: 120 calls",
       "1.2M tokens in · 350K out",
-      "≈$4.10 at API prices",
+      "💵 ≈$4.10 at API prices",
     ]);
   });
 });
@@ -67,10 +75,10 @@ describe("usageLines", () => {
 describe("progressText", () => {
   it("shows the parts done and, once Claude was called, the usage so far", () => {
     expect(progressText("Book", { done: 0, total: 80, ran: 0 })).toBe(
-      "🌐 <b>Translating «Book»</b>\n0 of 80 parts",
+      "<b>⏳ Processing: Book Translation (UA)</b> - Book\n0/80 parts",
     );
     expect(progressText("Book", { done: 0, total: 80, ran: 0 }, 12)).toBe(
-      "🌐 <b>Translating «Book»</b>\n0 of 80 parts · ≈12 min left",
+      "<b>⏳ Processing: Book Translation (UA)</b> - Book\n0/80 parts · ≈12 min left",
     );
     expect(
       progressText("Book", {
@@ -87,7 +95,7 @@ describe("progressText", () => {
         },
       }),
     ).toBe(
-      "🌐 <b>Translating «Book»</b>\n3 of 80 parts\n\n<blockquote>Claude: 4 calls\n30K tokens in · 9K out\n≈$0.20 at API prices</blockquote>",
+      "<b>⏳ Processing: Book Translation (UA)</b> - Book\n3/80 parts\n\n<blockquote>Claude: 4 calls\n30K tokens in · 9K out\n💵 ≈$0.20 at API prices</blockquote>",
     );
   });
 });

@@ -17,11 +17,11 @@ describe("publishStatus", () => {
   it("counts the topics done and shows each topic's state", () => {
     expect(publishStatus(rows)).toBe(
       [
-        "📚 <b>Publishing the library</b> · 2 of 4 topics",
+        "📚 <b>Publishing the library</b> · 2/4 topics",
         "",
         '✅ 23 updated | <a href="https://t.me/c/1/5">A — One</a>',
         "✅ no changes | B — Two",
-        "🔄 34 of 90 | C — &lt;Three&gt;",
+        "🔄 34/90 | C — &lt;Three&gt;",
         "⏳ Karaoke",
       ].join("\n"),
     );

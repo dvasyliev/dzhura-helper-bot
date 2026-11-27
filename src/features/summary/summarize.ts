@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { runClaude } from "../../lib/claude/claude.ts";
+import type { Language } from "../../lib/book/language.ts";
 import type { VideoInfo } from "../../lib/video/info.ts";
 import { LEVEL_NAMES, videoUrl } from "../../lib/video/summary.ts";
 
@@ -18,9 +19,14 @@ function stamp(seconds: number): string {
   return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
-/** What Claude gets: the video's title, channel and chapters, then the transcript. */
-export function summaryInput(info: VideoInfo, transcript: string): string {
+/** What Claude gets: the language to write in when not Ukrainian, the video's title, channel and chapters, then the transcript. */
+export function summaryInput(
+  info: VideoInfo,
+  transcript: string,
+  language: Language = "uk",
+): string {
   return [
+    ...(language === "en" ? ["<language>English</language>"] : []),
     "<video>",
     `Title: ${info.title}`,
     ...(info.channel ? [`Channel: ${info.channel}`] : []),
@@ -51,20 +57,22 @@ export function linkTimes(md: string, id: string): string {
 export function levelMarkdown(
   info: VideoInfo,
   id: string,
-  level: keyof typeof LEVEL_NAMES,
+  level: keyof (typeof LEVEL_NAMES)["uk"],
   reply: string,
+  language: Language = "uk",
 ): string {
   const source = [info.channel, videoUrl(id)].filter(Boolean).join(" · ");
-  return `# ${info.title}\n\n## ${LEVEL_NAMES[level]}\n\n${source}\n\n${linkTimes(reply.trim(), id)}\n`;
+  return `# ${info.title}\n\n## ${LEVEL_NAMES[language][level]}\n\n${source}\n\n${linkTimes(reply.trim(), id)}\n`;
 }
 
-/** Asks Claude for one level of the summary of `transcript`; returns its reply. */
+/** Asks Claude for one level of the summary of `transcript` in `language`; returns its reply. */
 export function writeLevel(
   level: Level,
   info: VideoInfo,
   transcript: string,
   run: typeof runClaude = runClaude,
+  language: Language = "uk",
 ): Promise<string> {
   const prompt = fileURLToPath(new URL(`prompt-${level}.md`, import.meta.url));
-  return run(prompt, summaryInput(info, transcript));
+  return run(prompt, summaryInput(info, transcript, language));
 }

@@ -9,6 +9,7 @@ import {
   monthText,
   recordText,
   reportAi,
+  spentText,
   type AiRecord,
 } from "./ai-usage.ts";
 
@@ -44,10 +45,17 @@ describe("formatting", () => {
       [
         "📋 <b>Brief summary · Talk &lt;1&gt;</b>",
         "🔗 https://t.me/c/1/2/3",
-        "🪙 120K in · 3.2K out · ≈$0.42",
-        "🤖 Sonnet 4.5 · ⏱ 1 min 12 s",
+        "🪙 120K in · 3.2K out 💵 ≈$0.42",
+        "🤖 Sonnet 4.5 ⏱ 1 min 12 s",
       ].join("\n"),
     );
+  });
+
+  it("shows what a job spent: Claude's usage and the time, or the time alone", () => {
+    expect(spentText(record)).toBe(
+      "🪙 120K in · 3.2K out 💵 ≈$0.42\n🤖 Sonnet 4.5 ⏱ 1 min 12 s",
+    );
+    expect(spentText({ ms: 192_000 })).toBe("⏱ 3 min 12 s");
   });
 
   it("totals a month", () => {
@@ -55,8 +63,8 @@ describe("formatting", () => {
     expect(monthText([old, record, record], "2026-11")).toBe(
       [
         "📊 <b>AI in November 2026</b>",
-        "2 operations · ⏱ 2 min 24 s",
-        "🪙 240K in · 6.4K out · ≈$0.84",
+        "2 operations ⏱ 2 min 24 s",
+        "🪙 240K in · 6.4K out 💵 ≈$0.84",
       ].join("\n"),
     );
   });
@@ -126,6 +134,24 @@ describe("reportAi", () => {
     const saved = JSON.parse(await readFile(file, "utf8"));
     expect(saved.records).toHaveLength(2);
     expect(saved.pins).toEqual({ "2026-11": 50 });
+  });
+
+  it("sends no message of its own when the job's status shows the usage", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "ai-")), "ai-usage.json");
+    const api = fakeApi();
+    await reportAi(operation, {
+      api: api as unknown as Api,
+      file,
+      message: false,
+    });
+    expect(api.sendMessage).toHaveBeenCalledOnce();
+    expect(api.sendMessage).toHaveBeenCalledWith(
+      7,
+      expect.stringContaining("1 operations"),
+      expect.anything(),
+    );
+    const saved = JSON.parse(await readFile(file, "utf8"));
+    expect(saved.records).toHaveLength(1);
   });
 
   it("never throws", async () => {

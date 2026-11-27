@@ -113,7 +113,7 @@ describe("voiceBook", () => {
     expect(api.sendAudio).not.toHaveBeenCalled();
     expect(api.sendMessage).toHaveBeenLastCalledWith(
       5,
-      "✅ <b>Done</b> → https://t.me/c/1/2/voice:Voice/001.mp3",
+      '<b>✅ Done: Audiobook (UA)</b> - <a href="https://t.me/c/1/2/voice:Voice/001.mp3">Book</a>',
       { parse_mode: "HTML" },
     );
   });
@@ -202,21 +202,21 @@ describe("voiceBook", () => {
     });
     expect(api.sendMessage).toHaveBeenCalledWith(
       5,
-      "🎧 <b>Voicing «Book»</b>\n3 of 25 chapters · ≈1 min left",
+      "<b>⏳ Processing: Audiobook (UA)</b> - Book\n3/25 chapters · ≈1 min left",
       { parse_mode: "HTML" },
     );
     expect(api.editMessageText.mock.calls).toEqual([
       [
         5,
         9,
-        "🎧 <b>Voicing «Book»</b>\n4 of 25 chapters · ≈1 min left",
+        "<b>⏳ Processing: Audiobook (UA)</b> - Book\n4/25 chapters · ≈1 min left",
         { parse_mode: "HTML" },
       ],
       // The chapters asked for are done: no time is left in this run.
       [
         5,
         9,
-        "🎧 <b>Voicing «Book»</b>\n5 of 25 chapters",
+        "<b>⏳ Processing: Audiobook (UA)</b> - Book\n5/25 chapters",
         { parse_mode: "HTML" },
       ],
     ]);
@@ -233,13 +233,13 @@ describe("voiceBook", () => {
     });
     expect(api.sendMessage).toHaveBeenCalledWith(
       5,
-      "🎧 <b>Re-voicing «Book»</b>\n0 of 2 chapters · ≈1 min left",
+      "<b>⏳ Processing: Audiobook (UA)</b> - Book\n0/2 chapters · ≈1 min left",
       { parse_mode: "HTML" },
     );
     expect(api.editMessageText).toHaveBeenLastCalledWith(
       5,
       9,
-      "🎧 <b>Re-voicing «Book»</b>\n2 of 2 chapters",
+      "<b>⏳ Processing: Audiobook (UA)</b> - Book\n2/2 chapters",
       { parse_mode: "HTML" },
     );
   });

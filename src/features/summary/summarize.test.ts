@@ -35,6 +35,14 @@ describe("summaryInput", () => {
   });
 });
 
+describe("summaryInput in English", () => {
+  it("names the language first", () => {
+    expect(summaryInput(INFO, "x", "en").split("\n")[0]).toBe(
+      "<language>English</language>",
+    );
+  });
+});
+
 describe("linkTimes", () => {
   it("turns every [time] into a link to that moment, once", () => {
     const md = "### [1:02:05] Кінець\n- Думка. [0:07]\n- [0:08](x) вже";
@@ -54,6 +62,9 @@ describe("levelMarkdown", () => {
     expect(levelMarkdown(INFO, "abc", "detailed", "x")).toContain(
       "## Детально",
     );
+    expect(levelMarkdown(INFO, "abc", "brief", "x", "en")).toContain(
+      "## Brief",
+    );
   });
 });
 
@@ -62,5 +73,8 @@ describe("writeLevel", () => {
     const run = vi.fn(async (_prompt: string, _input: string) => "reply");
     expect(await writeLevel("detailed", INFO, "[0:00] hi", run)).toBe("reply");
     expect(run.mock.calls[0]![0]).toMatch(/prompt-detailed\.md$/);
+    await writeLevel("brief", INFO, "[0:00] hi", run, "en");
+    expect(run.mock.calls[1]![0]).toMatch(/prompt-brief\.md$/);
+    expect(run.mock.calls[1]![1]).toMatch(/^<language>English<\/language>/);
   });
 });

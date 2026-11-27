@@ -6,7 +6,9 @@ import { SEND_AGAIN } from "../audiobook/index.ts";
 import { folders, tryLoadBook } from "../../lib/shelf/shelf.ts";
 import { BOOKS_DIR, bookName, safeFilename } from "../../lib/shelf/names.ts";
 import { bookLanguage } from "../../lib/book/language.ts";
-import { bold, code, HTML, problem } from "../../lib/text/format.ts";
+import { failureText } from "../../lib/text/status.ts";
+import { spentText } from "../../lib/claude/ai-usage.ts";
+import { bold, code, HTML } from "../../lib/text/format.ts";
 import type { Input } from "../../lib/input/input.ts";
 import { readInfo } from "../../lib/book/info.ts";
 import { BOOK_MD } from "../../lib/book/markdown.ts";
@@ -54,6 +56,7 @@ composer.callbackQuery(/^epub:([0-9a-f]+)$/, async (ctx) => {
   if (!folder || !dir || !book || !files.includes(BOOK_MD))
     return ctx.reply(SEND_AGAIN, HTML);
   const file = path.join(dir, BOOK_EPUB);
+  const started = Date.now();
   try {
     const made = await buildEpub(path.join(dir, BOOK_MD), file, {
       lang: bookLanguage(book.chapters.map((c) => c.text).join("\n")),
@@ -65,10 +68,7 @@ composer.callbackQuery(/^epub:([0-9a-f]+)$/, async (ctx) => {
         HTML,
       );
   } catch (error) {
-    return ctx.reply(
-      `⚠️ ${bold("Couldn't make the EPUB")}\n${problem(error)}`,
-      HTML,
-    );
+    return ctx.reply(failureText("Book EPUB", error, book.title), HTML);
   }
   await sendEpub(
     ctx.api,
@@ -77,6 +77,11 @@ composer.callbackQuery(/^epub:([0-9a-f]+)$/, async (ctx) => {
     file,
     safeFilename(bookName(book)),
     "epub",
+    {
+      what: "Book EPUB",
+      title: book.title,
+      spent: spentText({ ms: Date.now() - started }),
+    },
   );
 });
 

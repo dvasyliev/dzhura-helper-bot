@@ -1,18 +1,18 @@
 import { Composer, InlineKeyboard, type Context } from "grammy";
-import {
-  bold,
-  code,
-  escape,
-  HTML,
-  problem,
-  quote,
-} from "../../lib/text/format.ts";
+import { bold, code, escape, HTML, quote } from "../../lib/text/format.ts";
 import { busyHtml, busyWith, startJob } from "../../lib/jobs/jobs.ts";
 import { pressedBook } from "../../lib/input/search.ts";
 import { findFolder, folderKey } from "../../lib/book/folder-key.ts";
 import type { Feature } from "../../lib/feature/types.ts";
-import { voiceBook } from "./deliver.ts";
+import { audiobookName, voiceBook } from "./deliver.ts";
+import {
+  counter,
+  failureText,
+  statusText,
+  withLanguage,
+} from "../../lib/text/status.ts";
 import { clearButtons } from "../../lib/telegram/buttons.ts";
+import { spentText } from "../../lib/claude/ai-usage.ts";
 import { notify } from "../../lib/telegram/notify.ts";
 import type { Book } from "../../lib/book/epub.ts";
 import { chapters, type Chapter } from "../../lib/book/tracks.ts";
@@ -131,18 +131,27 @@ composer.command("regen", async (ctx) => {
       `🎧 ${bold("Re-voicing")} ${todo.map((c) => `«${escape(c.name)}»`).join(", ")} with «${escape(voice.name)}»`,
     );
     for (const c of todo) await removeAudio(audioDir, c.name);
+    const started = Date.now();
     await voiceBook(ctx.api, chatId, book, voice, todo, "regen", {
       done: 0,
       total: todo.length,
     });
-    await notify(ctx.api, chatId, `✅ ${bold("Re-voiced")}`);
+    await notify(
+      ctx.api,
+      chatId,
+      `${statusText(
+        "done",
+        withLanguage("Audiobook Chapters", voice.language),
+        book.title,
+      )}\n\n${spentText({ ms: Date.now() - started })}`,
+    );
   };
   if (
     !startJob(`re-voicing «${book.title}»`, regen, (error) =>
       notify(
         ctx.api,
         chatId,
-        `⚠️ ${bold("Re-voicing stopped")}\n${problem(error)}`,
+        failureText(audiobookName(voice), error, book.title),
       ),
     )
   )
@@ -215,6 +224,7 @@ async function start(
       chatId,
       `🎧 ${bold(`Voicing with «${escape(voice.name)}»`)}\n${range}\n\n${quote(estimate(todo, voice))}`,
     );
+    const started = Date.now();
     await voiceBook(ctx.api, chatId, book, voice, todo, "new", {
       done: total - (await remaining(book, voice)).length,
       total,
@@ -224,13 +234,13 @@ async function start(
       return notify(
         ctx.api,
         chatId,
-        `✅ ${bold(`«${escape(book.title)}» is fully voiced`)}\nFiles: ${code(escape(bookPaths(book.folder, voice.name).audioDir))}`,
+        `${statusText("done", audiobookName(voice), book.title)}\nFiles: ${code(escape(bookPaths(book.folder, voice.name).audioDir))}\n\n${spentText({ ms: Date.now() - started })}`,
       );
     picking.choosing = { book, voice };
     await ctx.api
       .sendMessage(
         chatId,
-        `❓ ${bold("Voice more?")}\n\n${quote([`Done ${total - left} of ${total}`])}\n\n${TYPE_RANGE}`,
+        `❓ ${bold("Voice more?")}\n\n${quote([counter(total - left, total, "chapters")])}\n\n${TYPE_RANGE}`,
         { ...HTML, reply_markup: await amountKeyboard(book, voice) },
       )
       .catch((error) => console.error("sendMessage failed:", error));
@@ -239,7 +249,7 @@ async function start(
     notify(
       ctx.api,
       chatId,
-      `⚠️ ${bold("Voicing stopped")}\n${problem(error)}\n\nTo continue from here, send the book again or type its title.`,
+      `${failureText(audiobookName(voice), error, book.title)}\n\nTo continue from here, send the book again or type its title.`,
     );
   if (!startJob(`voicing «${book.title}»`, voiceTodo, stopped)) {
     return ctx.callbackQuery

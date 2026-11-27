@@ -17,6 +17,8 @@ export type FileItem = {
   video?: { duration: number; width: number; height: number };
   /** Pinned when sent. */
   pin?: boolean;
+  /** One row of buttons under the file. */
+  buttons?: { text: string; data: string }[];
 };
 
 /** A text message the library wants posted. */
@@ -49,7 +51,10 @@ export type Posted = {
 export function version(item: Item): string {
   if (item.kind === "text")
     return `${item.text}\n${item.buttons?.map((b) => b.data).join(" ") ?? ""}${item.preview ? `\n${item.preview}` : ""}`;
-  return `${fileVersion(item)}${item.caption ?? ""}`;
+  const buttons = item.buttons?.length
+    ? `\n${item.buttons.map((b) => b.data).join(" ")}`
+    : "";
+  return `${fileVersion(item)}${item.caption ?? ""}${buttons}`;
 }
 
 /** The part of a file's version that changes when the file must be sent again: its content, audio title, performer and thumbnail. */

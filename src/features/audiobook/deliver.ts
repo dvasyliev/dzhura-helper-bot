@@ -6,6 +6,7 @@ import type { Synced } from "../../lib/library/topic/topic.ts";
 import { type ShelfBook } from "../../lib/shelf/shelf.ts";
 import { leftByPace, leftText } from "../../lib/text/eta.ts";
 import { HTML, bold, code, escape, problem } from "../../lib/text/format.ts";
+import { counter, statusText, withLanguage } from "../../lib/text/status.ts";
 import {
   audioCaption,
   audioTitle,
@@ -79,7 +80,7 @@ export async function voiceBook(
             audioDir: paths.audioDir,
           });
       }
-    else if (!linked) linked = await sendDone(api, chatId, synced);
+    else if (!linked) linked = await sendDone(api, chatId, synced, book, voice);
   };
   try {
     for await (const event of voiceChapters(job)) {
@@ -128,7 +129,6 @@ async function statusMessage(
   mode: "new" | "regen",
   { done, total }: { done: number; total: number },
 ) {
-  const verb = mode === "new" ? "Voicing" : "Re-voicing";
   const started = Date.now();
   let charsDone = 0;
   let charsLeft = todo.reduce((sum, c) => sum + c.text.length, 0);
@@ -137,7 +137,7 @@ async function statusMessage(
       leftByPace(Date.now() - started, charsDone, charsLeft) ??
       voicingMinutes(charsLeft, voice.provider);
     const left = charsLeft ? ` · ${leftText(minutes)}` : "";
-    return `🎧 ${bold(`${verb} «${escape(book.title)}»`)}\n${done} of ${total} chapters${left}`;
+    return `${statusText("processing", audiobookName(voice), book.title)}\n${counter(done, total, "chapters")}${left}`;
   };
   const sent = await api.sendMessage(chatId, text(), HTML).catch((error) => {
     console.error("sendMessage failed:", error);
@@ -156,18 +156,29 @@ async function statusMessage(
   };
 }
 
-/** `Done → <link>` to the first changed audio message; false when no audio message changed. */
+/** What the voicing is called in the statuses: «Audiobook (UA)». */
+export function audiobookName(voice: Voice): string {
+  return withLanguage("Audiobook", voice.language);
+}
+
+/** «✅ Done: Audiobook (UA) - Title», the title linked to the first changed audio message; false when no audio message changed. */
 async function sendDone(
   api: Api,
   chatId: number,
   synced: Synced,
+  book: Book,
+  voice: Voice,
 ): Promise<boolean> {
   const key = synced.changed.find(
     (k) => k.startsWith("voice:") && k.includes("/"),
   );
   const link = key && synced.link(key);
   if (!link) return false;
-  await notify(api, chatId, `✅ ${bold("Done")} → ${escape(link)}`);
+  await notify(
+    api,
+    chatId,
+    statusText("done", audiobookName(voice), book.title, link),
+  );
   return true;
 }
 

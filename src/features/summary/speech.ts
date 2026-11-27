@@ -1,12 +1,13 @@
 /** A line that ends a sentence; a heading or a bullet without it gets a «.», so the voice pauses after it. */
 const END = /[.!?…:;»"”)]$/;
 
-/** A summary's markdown as the voice reads it: no source line, no «Зміст» list, no links, times or markup. */
+/** A summary's markdown as the voice reads it: no source line, no «Зміст» («Contents») list, no links, times or markup. */
 export function speechText(md: string): string {
   const lines: string[] = [];
   let contents = false;
   for (const raw of md.split("\n")) {
-    if (/^#{1,6}\s/.test(raw)) contents = /^#+\s+Зміст\s*$/.test(raw);
+    if (/^#{1,6}\s/.test(raw))
+      contents = /^#+\s+(?:Зміст|Contents)\s*$/.test(raw);
     if (contents) continue;
     // «Channel · https://youtu.be/…» under the title.
     if (raw.includes("https://youtu.be/") && !raw.startsWith("- ")) continue;

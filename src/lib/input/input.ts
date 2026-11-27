@@ -7,6 +7,7 @@ import { bookLanguage, type BookLanguage } from "../book/language.ts";
 import { parseEpub, type Book } from "../book/epub.ts";
 import { youtubeId } from "../video/link.ts";
 import { bold, HTML, problem } from "../text/format.ts";
+import { failureText, statusText } from "../text/status.ts";
 import { busyHtml, busyWith, startJob } from "../jobs/jobs.ts";
 
 /** What the owner sent, recognised once; features offer their actions for it. */
@@ -116,15 +117,11 @@ async function startPdf(
     await show(bookInput(book));
   };
   const stopped = (error: unknown) =>
-    notify(
-      ctx.api,
-      chatId,
-      `⚠️ ${bold("Reading the PDF stopped")}\n${problem(error)}`,
-    );
+    notify(ctx.api, chatId, failureText("Reading PDF", error, name));
   if (!startJob(`reading «${name}»`, read, stopped))
     return ctx.reply(busyHtml(), HTML);
   await ctx.reply(
-    `⏳ ${bold("Reading the PDF")}\nThis takes a minute or two.`,
+    `${statusText("processing", "Reading PDF", name)}\nThis takes a minute or two.`,
     HTML,
   );
 }

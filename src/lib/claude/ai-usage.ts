@@ -60,7 +60,22 @@ function addUsage(sum: Usage, one: Usage): void {
 
 function tokens(usage: Usage): string {
   const read = usage.input + usage.cacheWrite + usage.cacheRead;
-  return `${compact.format(read)} in · ${compact.format(usage.output)} out · ≈$${usage.costUsd.toFixed(2)}`;
+  return `${compact.format(read)} in · ${compact.format(usage.output)} out 💵 ≈$${usage.costUsd.toFixed(2)}`;
+}
+
+/**
+ * What a job spent (Telegram HTML), the end of its Done message: with Claude's `usage` the tokens and price, then the
+ * model and the time; without it (voicing, karaoke) the time alone.
+ */
+export function spentText(r: {
+  ms: number;
+  usage?: Usage;
+  model?: string;
+}): string {
+  const time = `⏱ ${durationText(r.ms)}`;
+  if (!r.usage) return time;
+  const model = r.model ? `🤖 ${escape(modelName(r.model))} ` : "";
+  return `🪙 ${tokens(r.usage)}\n${model}${time}`;
 }
 
 /** One operation's message (Telegram HTML). */
@@ -68,9 +83,7 @@ export function recordText(r: AiRecord): string {
   const [icon, ...rest] = r.what.split(" ");
   const lines = [`${icon} ${bold(escape(rest.join(" ")))}`];
   if (r.link) lines.push(`🔗 ${escape(r.link)}`);
-  lines.push(`🪙 ${tokens(r.usage)}`);
-  const model = r.model ? `🤖 ${escape(modelName(r.model))} · ` : "";
-  lines.push(`${model}⏱ ${durationText(r.ms)}`);
+  lines.push(spentText(r));
   return lines.join("\n");
 }
 
@@ -92,7 +105,7 @@ export function monthText(records: AiRecord[], month: string): string {
   });
   return [
     `📊 ${bold(`AI in ${name}`)}`,
-    `${own.length} operations · ⏱ ${durationText(ms)}`,
+    `${own.length} operations ⏱ ${durationText(ms)}`,
     `🪙 ${tokens(sum)}`,
   ].join("\n");
 }
@@ -111,12 +124,18 @@ export function reportAiTo(api: Api): void {
 }
 
 /**
- * Saves an AI operation, tells the owner about it and updates the month's pinned total. Never throws: a report
- * must not fail the work it reports on.
+ * Saves an AI operation, tells the owner about it (unless `message` is false: the job's Done message shows
+ * `spentText` instead) and updates the month's pinned total. Never throws: a report must not fail the work it
+ * reports on.
  */
 export async function reportAi(
   record: Omit<AiRecord, "at">,
-  { api = reporter, file = AI_USAGE_FILE, now = new Date() } = {},
+  {
+    api = reporter,
+    file = AI_USAGE_FILE,
+    now = new Date(),
+    message = true,
+  } = {},
 ): Promise<void> {
   try {
     // Without the bot (tests, scripts) nothing is saved or sent.
@@ -127,10 +146,11 @@ export async function reportAi(
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, JSON.stringify(store, null, 1));
     const chat = ownerId();
-    await api.sendMessage(chat, recordText(full), {
-      ...HTML,
-      link_preview_options: { is_disabled: true },
-    });
+    if (message)
+      await api.sendMessage(chat, recordText(full), {
+        ...HTML,
+        link_preview_options: { is_disabled: true },
+      });
     const month = monthOf(full.at);
     const total = monthText(store.records, month);
     const pinned = store.pins[month];

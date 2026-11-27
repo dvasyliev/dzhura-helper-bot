@@ -24,12 +24,13 @@ describe("sendEpub", () => {
       "/t/book.epub",
       "A",
       "epub",
+      { what: "Book EPUB", title: "A" },
     );
     expect(syncBook).toHaveBeenCalledWith(api, "Book");
     expect(api.sendDocument).not.toHaveBeenCalled();
     expect(api.sendMessage).toHaveBeenCalledWith(
       5,
-      "✅ <b>Done</b> → https://t.me/c/1/2/3",
+      '<b>✅ Done: Book EPUB</b> - <a href="https://t.me/c/1/2/3">A</a>',
       { parse_mode: "HTML" },
     );
   });
@@ -47,6 +48,7 @@ describe("sendEpub", () => {
       "/t/book.epub",
       "A",
       "epub",
+      { what: "Book EPUB", title: "A" },
     );
     expect(api.sendDocument).not.toHaveBeenCalled();
     expect(api.sendMessage).not.toHaveBeenCalled();
@@ -62,6 +64,7 @@ describe("sendEpub", () => {
       "/t/book.epub",
       "A",
       "epub",
+      { what: "Book EPUB", title: "A" },
     );
     expect(api.sendDocument).toHaveBeenCalledTimes(1);
   });

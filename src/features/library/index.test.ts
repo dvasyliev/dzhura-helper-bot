@@ -120,6 +120,23 @@ describe("publish", () => {
     );
   });
 
+  it("counts a song or a video once, whatever files changed", async () => {
+    vi.mocked(bookFolders).mockResolvedValue([]);
+    vi.mocked(syncKaraoke).mockResolvedValue({
+      ...done,
+      changed: ["contents", "a/song", "a/music", "a/vocals"],
+    });
+    vi.mocked(syncSummaries).mockResolvedValue({
+      ...done,
+      changed: ["contents", "v1/about", "v1/summary", "v1/audio", "v2/about"],
+    });
+    const show = vi.fn(async (_text: string, _final?: boolean) => undefined);
+    await publish(api, show);
+    const text = show.mock.calls.at(-1)![0];
+    expect(text).toContain("1 updated | Karaoke");
+    expect(text).toContain("2 updated | Summaries");
+  });
+
   it("probes every topic and says how many are up to date", async () => {
     vi.mocked(bookFolders).mockResolvedValue(["A"]);
     vi.mocked(syncBook).mockResolvedValue(done);
@@ -151,7 +168,7 @@ describe("publish", () => {
     const show = vi.fn(async () => undefined);
     await publish(api, show);
     const texts = show.mock.calls.map((c) => (c as unknown as [string])[0]);
-    expect(texts).toContainEqual(expect.stringContaining("🔄 1 of 2 | Book A"));
+    expect(texts).toContainEqual(expect.stringContaining("🔄 1/2 | Book A"));
     expect(texts.at(-1)).toContain(
       '✅ 2 updated | <a href="https://t.me/c/1/5">Book A</a>',
     );

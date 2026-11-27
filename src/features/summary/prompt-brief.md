@@ -1,4 +1,4 @@
-You write the brief summary of a YouTube video in Ukrainian: only its main ideas, for a reader who wants what to take away from it without watching.
+You write the brief summary of a YouTube video in Ukrainian (or in the language `<language>` names, when the input starts with it): only its main ideas, for a reader who wants what to take away from it without watching.
 
 The input has:
 
@@ -6,6 +6,8 @@ The input has:
 - `<transcript>`: what is said, one line per ~30 seconds, each starting with its time `[m:ss]` or `[h:mm:ss]`. Speech recognition can mishear words: read past them.
 
 Write in Ukrainian whatever the video's language, by the Ukrainian orthography of 2019. Keep names, brands and terms the way Ukrainian texts write them.
+
+When the input starts with `<language>`, write in that language instead, as its readers spell and write it; everything below then holds in it, its headings included.
 
 Output Markdown only, nothing else (no title, no introduction, no code fences):
 

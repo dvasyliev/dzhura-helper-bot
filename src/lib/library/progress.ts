@@ -20,7 +20,7 @@ function row({ name, state, sent, changed, link }: Row): string {
     : escape(name);
   const detail =
     state === "running" && sent
-      ? `${sent[0]} of ${sent[1]} | `
+      ? `${sent[0]}/${sent[1]} | `
       : state === "done"
         ? changed
           ? `${changed} updated | `
@@ -37,7 +37,7 @@ export function publishStatus(rows: Row[], end?: "done" | "stopped"): string {
       ? `✅ ${bold("Library is up to date")} · ${rows.length} topics`
       : end === "stopped"
         ? `⚠️ ${bold("Publishing stopped")} · the library group is unavailable`
-        : `📚 ${bold("Publishing the library")} · ${done} of ${rows.length} topics`;
+        : `📚 ${bold("Publishing the library")} · ${done}/${rows.length} topics`;
   return [head, "", ...rows.map(row)].join("\n");
 }
 
