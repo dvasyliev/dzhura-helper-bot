@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.2 (2026-11-27)
+
+### Fixes
+
+- voice buttons show gender and language; promo video (4882cb5)
+
 ## 0.15.1 (2026-11-27)
 
 ### Other
