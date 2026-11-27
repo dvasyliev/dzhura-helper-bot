@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { folderKey } from "./button.ts";
+import { folderKey } from "../../lib/book/folder-key.ts";
 import { progressText, reportText, translate, usageLines } from "./index.ts";
 
 describe("reportText", () => {

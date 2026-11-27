@@ -1,6 +1,6 @@
-import { fileURLToPath } from "node:url";
+import pRetry from "p-retry";
 import { z } from "zod";
-import { runPython } from "../../python.ts";
+import { runPython } from "../../lib/python/python.ts";
 import type { TermMatch } from "./lang.ts";
 
 /** A glossary entry: how a source name or term must be written in Ukrainian. */
@@ -35,26 +35,20 @@ export type CheckInput = {
 /** The translation after the automatic typography fixes, and the problems left in it. */
 export type CheckResult = { translation: string; problems: Problem[] };
 
-const SCRIPT = fileURLToPath(
-  new URL("scripts/chunk_check.py", import.meta.url),
-);
+const MODULE = "dzhura_helper_bot.translate.chunk_check";
 const REPLY = z.object({
   translation: z.string(),
   problems: z.array(PROBLEM),
 });
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 /**
- * A word of a glossary term, as `word_pattern` in scripts/checks.py: "whole", the word itself; "stem", its stem (all
+ * A word of a glossary term, as `word_pattern` in dzhura_helper_bot.translate.checks: "whole", the word itself; "stem", its stem (all
  * but the last two letters, at least four) and at most three letters more than the word has.
  */
 function wordPattern(word: string, match: TermMatch): string {
-  if (match === "whole") return escapeRegExp(word);
+  if (match === "whole") return RegExp.escape(word);
   const stem = word.slice(0, Math.max(word.length - 2, 4));
-  return `${escapeRegExp(stem)}\\p{L}{0,${word.length + 3 - stem.length}}`;
+  return `${RegExp.escape(stem)}\\p{L}{0,${word.length + 3 - stem.length}}`;
 }
 
 /**
@@ -71,11 +65,19 @@ export function hasTerm(text: string, term: Term, match: TermMatch): boolean {
   );
 }
 
-/** Fixes the typography of a translated chunk and checks it against its source, in scripts/chunk_check.py. */
-export async function checkChunk(input: CheckInput): Promise<CheckResult> {
-  let result: CheckResult | undefined;
-  for await (const reply of runPython(SCRIPT, input))
-    result = REPLY.parse(reply);
-  if (!result) throw new Error("chunk_check.py printed no reply");
-  return result;
+/** Fixes the typography of a translated chunk and checks it against its source, in dzhura_helper_bot.translate.chunk_check. */
+export function checkChunk(
+  input: CheckInput,
+  { retryMs = 1000 }: { retryMs?: number } = {},
+): Promise<CheckResult> {
+  return pRetry(
+    async () => {
+      let result: CheckResult | undefined;
+      for await (const reply of runPython(MODULE, input, { schema: REPLY }))
+        result = reply;
+      if (!result) throw new Error("chunk_check printed no reply");
+      return result;
+    },
+    { retries: 1, minTimeout: retryMs, randomize: true },
+  );
 }

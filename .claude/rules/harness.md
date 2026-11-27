@@ -2,7 +2,7 @@
 
 Written by the codebase-harness plugin from `.claude/harness.json`; do not edit by hand.
 
-Harness modules: core, tsc, basedpyright, prettier, feature-workflow, oxlint, ruff, file-size, knip, vulture, deptry, dupes, vitest, pytest, commitlint, pre-commit, sync-deps, node-practices, python-practices, context7, libraries. Specs and plans are written in English.
+Harness modules: core, tsc, basedpyright, prettier, feature-workflow, oxlint, ruff, file-size, knip, dependency-cruiser, vulture, deptry, dupes, vitest, pytest, commitlint, pre-commit, sync-deps, node-practices, python-practices, context7, libraries. Specs and plans are written in English.
 
 ## Commands
 
@@ -21,6 +21,8 @@ uv run ruff format  # Ruff format on one file (used by the edit hook)
 uv run ruff check --fix --force-exclude  # Ruff lint with fixes on one file (used by the edit hook)
 bash .claude/checks/file-size.sh src  # fails for a .py file over 500 lines
 npm run knip            # unused files, exports and dependencies
+npm run deps            # import boundaries between units and shared code (dependency-cruiser)
+npm run deps:baseline   # records today's boundary violations, so only new ones fail
 uv run vulture src --min-confidence 80  # unused Python code (vulture)
 uv run deptry . --experimental-namespace-package  # unused, missing and transitive Python dependencies (deptry); a folder without __init__.py counts as the project's own package
 npm run dupes           # duplicated code (jscpd)

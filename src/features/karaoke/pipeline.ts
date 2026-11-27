@@ -1,6 +1,10 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { runPython } from "../../python.ts";
+import { z } from "zod";
+import { readdirEntriesOrEmpty, statOrUndefined } from "../../lib/fs/absent.ts";
+import { readJsonOrUndefined } from "../../lib/fs/json.ts";
+import { KARAOKE_META } from "../../lib/library/karaoke.ts";
+import { runPython } from "../../lib/python/python.ts";
+import type { Version } from "../../lib/video/version.ts";
 
 export type KaraokeJob = {
   url: string;
@@ -14,44 +18,63 @@ export type KaraokeJob = {
   useTranscript?: boolean;
 };
 
-export type Version = "music" | "vocals";
-
-export type KaraokeEvent =
-  | { step: "download" | "separate" | "listen" | "lyrics" | "align" | "render" }
-  | {
-      video: string;
-      /** The same video in full quality, for YouTube; equals `video` when it fits Telegram. */ full: string;
-      title: string;
-      duration: number;
-      width: number;
-      height: number;
-    }
-  | { needLyrics: "not_found" | "mismatch"; transcript: string }
-  | { error: string };
+/** What dzhura_helper_bot.karaoke.karaoke prints; `need_lyrics` is read as `needLyrics`. */
+const KARAOKE_EVENT = z.union([
+  z.object({
+    step: z.enum([
+      "download",
+      "separate",
+      "listen",
+      "lyrics",
+      "align",
+      "render",
+    ]),
+  }),
+  z.object({
+    video: z.string(),
+    /** The same video in full quality, for YouTube; equals `video` when it fits Telegram. */
+    full: z.string(),
+    // The bot does not read these; Python's Meta may leave them None.
+    title: z.string().nullish(),
+    duration: z.number().nullish(),
+    width: z.number().nullish(),
+    height: z.number().nullish(),
+  }),
+  z
+    .object({
+      need_lyrics: z.enum(["not_found", "mismatch", "unreachable"]),
+      transcript: z.string(),
+    })
+    .transform(({ need_lyrics, transcript }) => ({
+      needLyrics: need_lyrics,
+      transcript,
+    })),
+  z.object({ error: z.string() }),
+]);
+export type KaraokeEvent = z.infer<typeof KARAOKE_EVENT>;
 
 const DATA_DIR = "data/karaoke";
 
 /** Whether the clip's vocals were split off before: then the karaoke takes about a minute instead of 2–3. */
-export function isSeparated(id: string, dataDir = DATA_DIR): boolean {
-  const folders = existsSync(dataDir)
-    ? readdirSync(dataDir, { withFileTypes: true }).filter((f) =>
-        f.isDirectory(),
-      )
-    : [];
-  return folders.some((f) => {
-    const song = path.join(dataDir, f.name);
-    if (
-      !existsSync(path.join(song, "stems", "vocals.wav")) ||
-      !existsSync(path.join(song, "meta.json"))
-    )
-      return false;
-    return (
-      JSON.parse(readFileSync(path.join(song, "meta.json"), "utf8")).id === id
+export async function isSeparated(
+  id: string,
+  dataDir = DATA_DIR,
+): Promise<boolean> {
+  for (const folder of await readdirEntriesOrEmpty(dataDir)) {
+    if (!folder.isDirectory()) continue;
+    const song = path.join(dataDir, folder.name);
+    if (!(await statOrUndefined(path.join(song, "stems", "vocals.wav"))))
+      continue;
+    const meta = await readJsonOrUndefined(
+      path.join(song, "meta.json"),
+      KARAOKE_META,
     );
-  });
+    if (meta?.id === id) return true;
+  }
+  return false;
 }
 
-/** Runs src/features/karaoke/scripts/karaoke.py through uv, yielding its progress and its result. */
+/** Runs the Python module dzhura_helper_bot.karaoke.karaoke through uv, yielding its progress and its result. */
 export async function* runKaraoke(
   job: KaraokeJob,
 ): AsyncGenerator<KaraokeEvent> {
@@ -63,14 +86,8 @@ export async function* runKaraoke(
     lyrics_text: job.lyricsText ?? null,
     use_transcript: job.useTranscript ?? false,
   };
-  for await (const { need_lyrics, ...rest } of runPython(
-    "src/features/karaoke/scripts/karaoke.py",
-    input,
-    { background: true },
-  ))
-    yield (
-      need_lyrics
-        ? { needLyrics: need_lyrics, transcript: rest.transcript }
-        : rest
-    ) as KaraokeEvent;
+  yield* runPython("dzhura_helper_bot.karaoke.karaoke", input, {
+    schema: KARAOKE_EVENT,
+    background: true,
+  });
 }

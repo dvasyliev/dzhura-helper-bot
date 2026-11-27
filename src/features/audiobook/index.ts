@@ -1,49 +1,48 @@
 import { Composer, InlineKeyboard, type Context } from "grammy";
-import { bold, code, escape, HTML, problem, quote } from "../../format.ts";
-import { busyHtml, busyWith, startJob } from "../../jobs.ts";
-import { pressedBook } from "../../search.ts";
-import { findFolder, folderKey } from "../translate/button.ts";
-import type { Feature } from "../types.ts";
-import { notify, voiceBook } from "./deliver.ts";
-import type { Book } from "../book/epub.ts";
 import {
-  chapters,
-  loadBook,
-  shelf,
-  unfinished,
-  voicedCount,
-  type Chapter,
-  type ShelfBook,
-} from "./library.ts";
+  bold,
+  code,
+  escape,
+  HTML,
+  problem,
+  quote,
+} from "../../lib/text/format.ts";
+import { busyHtml, busyWith, startJob } from "../../lib/jobs/jobs.ts";
+import { pressedBook } from "../../lib/input/search.ts";
+import { findFolder, folderKey } from "../../lib/book/folder-key.ts";
+import type { Feature } from "../../lib/feature/types.ts";
+import { voiceBook } from "./deliver.ts";
+import { clearButtons } from "../../lib/telegram/buttons.ts";
+import { notify } from "../../lib/telegram/notify.ts";
+import type { Book } from "../../lib/book/epub.ts";
+import { chapters, type Chapter } from "../../lib/book/tracks.ts";
+import { unfinished } from "./library.ts";
+import { shelf, tryLoadBook, type ShelfBook } from "../../lib/shelf/shelf.ts";
+import { bookPaths, shelfLabel, parseNumbers } from "../../lib/shelf/names.ts";
+import { bookLanguage, type BookLanguage } from "../../lib/book/language.ts";
+import { voicingTime } from "./text.ts";
 import {
-  bookName,
-  bookPaths,
-  bookLanguage,
-  shelfLabel,
-  forecast,
-  parseNumbers,
-  voicingTime,
-  type BookLanguage,
-  type Language,
-} from "./text.ts";
+  estimate,
+  offer,
+  picking,
+  remaining,
+  SEND_AGAIN,
+  voicedSoFar,
+} from "./offer.ts";
+
+export { offer, SEND_AGAIN };
 import {
   VOICES,
-  isVoiced,
   removeAudio,
   voicesFor,
   type Voice,
-} from "./voice.ts";
+} from "../../lib/tts/voice.ts";
 
 /** Chapters voiced in one go unless the whole book is asked for. */
 const BATCH = 5;
 const TYPE_RANGE = "Or type chapter numbers, for example 10-20.";
 const ONLY_LANGUAGES = `⚠️ ${bold("I voice only Ukrainian and English books")}`;
-export const SEND_AGAIN = `⚠️ ${bold("This book is no longer here")}\nSend it again.`;
 
-/** The last book sent, waiting for the voice to be chosen. */
-let pending: ShelfBook | undefined;
-/** Book and voice waiting for how many chapters to voice: a button or typed numbers («10-20»). */
-let choosing: { book: ShelfBook; voice: Voice } | undefined;
 /** The book being voiced or voiced last, for /regen. */
 let current: { book: ShelfBook; voice: Voice } | undefined;
 /** Book folders offered by the menu; buttons refer to them by index. */
@@ -53,18 +52,18 @@ const composer = new Composer<Context>();
 
 // Voice chosen: a short rest is voiced at once, otherwise the owner picks how much.
 composer.callbackQuery(/^voice:(.+)$/, async (ctx) => {
-  const book = pending;
+  const book = picking.pending;
   const voice = VOICES.find((v) => v.id === ctx.match[1]);
   if (!book || !voice) return ctx.answerCallbackQuery("Send the book again.");
-  const todo = remaining(book, voice);
+  const todo = await remaining(book, voice);
   if (todo.length && todo.length <= BATCH) return start(ctx, book, voice, todo);
   await ctx.answerCallbackQuery();
-  await ctx.editMessageReplyMarkup().catch(() => {});
+  await clearButtons(ctx);
   if (todo.length) {
-    choosing = { book, voice };
+    picking.choosing = { book, voice };
     return ctx.reply(
       `❓ ${bold("How many chapters to voice?")}\n${TYPE_RANGE}`,
-      { ...HTML, reply_markup: amountKeyboard(book, voice) },
+      { ...HTML, reply_markup: await amountKeyboard(book, voice) },
     );
   }
   current = { book, voice };
@@ -75,9 +74,9 @@ composer.callbackQuery(/^voice:(.+)$/, async (ctx) => {
 });
 
 composer.callbackQuery(/^amount:(\d+|all)$/, async (ctx) => {
-  if (!choosing) return ctx.answerCallbackQuery("Send the book again.");
-  const { book, voice } = choosing;
-  const todo = remaining(book, voice);
+  if (!picking.choosing) return ctx.answerCallbackQuery("Send the book again.");
+  const { book, voice } = picking.choosing;
+  const todo = await remaining(book, voice);
   await start(
     ctx,
     book,
@@ -88,8 +87,8 @@ composer.callbackQuery(/^amount:(\d+|all)$/, async (ctx) => {
 
 // Chapter numbers typed instead of pressing an amount button: «10-20», «3 5 7».
 composer.hears(/^[\d\s,–-]+$/, async (ctx, next) => {
-  if (!choosing) return next();
-  const { book, voice } = choosing;
+  if (!picking.choosing) return next();
+  const { book, voice } = picking.choosing;
   const all = chapters(book);
   const numbers = parseNumbers(ctx.message!.text!);
   const asked = all.filter((c) => numbers.includes(c.index + 1));
@@ -98,7 +97,7 @@ composer.hears(/^[\d\s,–-]+$/, async (ctx, next) => {
       `⚠️ ${bold(`Chapters go from 1 to ${all.length}`)}\nFor example 10-20.`,
       HTML,
     );
-  const left = new Set(remaining(book, voice).map((c) => c.index));
+  const left = new Set((await remaining(book, voice)).map((c) => c.index));
   const todo = asked.filter((c) => left.has(c.index));
   if (!todo.length)
     return ctx.reply(
@@ -178,7 +177,7 @@ export const audiobook: Feature = {
     const book = { ...input.book, folder };
     return {
       buttons: [{ text: "🎧 Voice", data: `voice-book:${folderKey(folder)}` }],
-      lines: voicedSoFar(book, chapters(book), voicesFor(language)),
+      lines: await voicedSoFar(book, chapters(book), voicesFor(language)),
       ask: (ctx) => offer(ctx, book, language),
     };
   },
@@ -188,13 +187,11 @@ export const audiobook: Feature = {
 composer.callbackQuery(/^voice-book:([0-9a-f]+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
   const folder = findFolder(ctx.match[1], await shelf());
-  const book = folder
-    ? await loadBook(folder).catch(() => undefined)
-    : undefined;
+  const book = folder ? await tryLoadBook(folder) : undefined;
   const language = book && languageOf(book);
   if (!book || (language !== "uk" && language !== "en"))
     return ctx.reply(SEND_AGAIN, HTML);
-  await ctx.editMessageReplyMarkup().catch(() => {});
+  await clearButtons(ctx);
   await offer(ctx, book, language);
 });
 
@@ -219,22 +216,22 @@ async function start(
       `🎧 ${bold(`Voicing with «${escape(voice.name)}»`)}\n${range}\n\n${quote(estimate(todo, voice))}`,
     );
     await voiceBook(ctx.api, chatId, book, voice, todo, "new", {
-      done: total - remaining(book, voice).length,
+      done: total - (await remaining(book, voice)).length,
       total,
     });
-    const left = remaining(book, voice).length;
+    const left = (await remaining(book, voice)).length;
     if (!left)
       return notify(
         ctx.api,
         chatId,
         `✅ ${bold(`«${escape(book.title)}» is fully voiced`)}\nFiles: ${code(escape(bookPaths(book.folder, voice.name).audioDir))}`,
       );
-    choosing = { book, voice };
+    picking.choosing = { book, voice };
     await ctx.api
       .sendMessage(
         chatId,
         `❓ ${bold("Voice more?")}\n\n${quote([`Done ${total - left} of ${total}`])}\n\n${TYPE_RANGE}`,
-        { ...HTML, reply_markup: amountKeyboard(book, voice) },
+        { ...HTML, reply_markup: await amountKeyboard(book, voice) },
       )
       .catch((error) => console.error("sendMessage failed:", error));
   };
@@ -249,18 +246,21 @@ async function start(
       ? ctx.answerCallbackQuery(`Please wait, ${busyWith()} is in progress.`)
       : ctx.reply(busyHtml(), HTML);
   }
-  pending = undefined;
-  choosing = undefined;
+  picking.pending = undefined;
+  picking.choosing = undefined;
   current = { book, voice };
   if (ctx.callbackQuery) {
     await ctx.answerCallbackQuery();
-    await ctx.editMessageReplyMarkup().catch(() => {});
+    await clearButtons(ctx);
   }
 }
 
 /** «5 chapters · ≈3 min» and «The rest (66) · ≈1 h», for the chapters `voice` has not voiced yet. */
-function amountKeyboard(book: ShelfBook, voice: Voice): InlineKeyboard {
-  const todo = remaining(book, voice);
+async function amountKeyboard(
+  book: ShelfBook,
+  voice: Voice,
+): Promise<InlineKeyboard> {
+  const todo = await remaining(book, voice);
   const time = (list: Chapter[]) =>
     ` · ≈${voicingTime(
       list.reduce((sum, c) => sum + c.text.length, 0),
@@ -277,11 +277,6 @@ function amountKeyboard(book: ShelfBook, voice: Voice): InlineKeyboard {
       ? "The whole book"
       : `The rest (${todo.length})`;
   return keyboard.text(`${rest}${time(todo)}`, `amount:all`);
-}
-
-function remaining(book: ShelfBook, voice: Voice): Chapter[] {
-  const { audioDir } = bookPaths(book.folder, voice.name);
-  return chapters(book).filter((c) => !isVoiced(audioDir, c.name));
 }
 
 /** The menu button: what to send, and the most recently touched books that are not voiced to the end. */
@@ -306,54 +301,4 @@ async function openMenu(ctx: Context) {
 
 function languageOf(book: Book): BookLanguage | undefined {
   return bookLanguage(book.chapters.map((c) => c.text).join("\n"));
-}
-
-/** What is already voiced, the forecast and the buttons with the voices of the book's language; an English book can also be translated. */
-export async function offer(ctx: Context, book: ShelfBook, language: Language) {
-  pending = book;
-  choosing = undefined;
-  const all = chapters(book);
-  const voices = voicesFor(language);
-  const resume = voices.some((v) => {
-    const left = remaining(book, v).length;
-    return left && left < all.length;
-  });
-  const text = [
-    `❓ ${bold("Which voice?")}\n${escape(bookName(book))}`,
-    quote([
-      `${all.length} chapters`,
-      ...voicedSoFar(book, all, voices),
-      ...estimate(all, voices[0]),
-    ]),
-    ...(resume ? ["Pick the same voice to continue where it stopped."] : []),
-  ].join("\n\n");
-  const keyboard = new InlineKeyboard();
-  for (const voice of voices) keyboard.text(voice.name, `voice:${voice.id}`);
-  await ctx.reply(text, { ...HTML, reply_markup: keyboard });
-}
-
-/** «Already voiced by «Oksana»: 12 of 71» (HTML) for each voice that has audio of this book. */
-function voicedSoFar(
-  book: ShelfBook,
-  all: Chapter[],
-  voices: Voice[],
-): string[] {
-  const done = voices
-    .map((voice) => ({
-      voice,
-      count: voicedCount(book, voice, all),
-    }))
-    .filter((d) => d.count);
-  return done.map(
-    (d) =>
-      `Already voiced by «${escape(d.voice.name)}»: ${d.count} of ${all.length}`,
-  );
-}
-
-/** The forecast's lines, for a quote. */
-function estimate(todo: Chapter[], voice: Voice): string[] {
-  return forecast(
-    todo.map((c) => c.text.length),
-    voice.provider,
-  ).split("\n");
 }

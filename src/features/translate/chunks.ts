@@ -1,9 +1,9 @@
-import type { Book } from "../book/epub.ts";
+import type { Book } from "../../lib/book/epub.ts";
 import {
   headingMarks,
   markdownParagraph,
   toMarkdown,
-} from "../book/markdown.ts";
+} from "../../lib/book/markdown.ts";
 
 /** A chunk is sent to the model in one request; a single longer paragraph still goes whole. */
 export const MAX_CHUNK_CHARS = 6000;

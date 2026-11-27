@@ -1,6 +1,6 @@
 import type { BotCommand } from "grammy/types";
 import { PUBLISH_COMMAND } from "./features/library/index.ts";
-import type { Feature } from "./features/types.ts";
+import type { Feature } from "./lib/feature/types.ts";
 
 /** A feature's name in the menu; one not built yet is marked «soon». */
 export function label(feature: Feature): string {

@@ -1,14 +1,15 @@
 import { Composer, InputFile, type Api, type Context } from "grammy";
-import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { aiMeter, reportAi } from "../../ai-usage.ts";
-import { config } from "../../config.ts";
-import { bold, escape, HTML, problem } from "../../format.ts";
-import { busyHtml, startJob } from "../../jobs.ts";
-import { runPython } from "../../python.ts";
-import { notify } from "../audiobook/deliver.ts";
-import { voiceChapters, type Voice } from "../audiobook/voice.ts";
+import { aiMeter, reportAi } from "../../lib/claude/ai-usage.ts";
+import { statOrUndefined } from "../../lib/fs/absent.ts";
+import { ownerId } from "../../lib/telegram/owner.ts";
+import { bold, escape, HTML, problem } from "../../lib/text/format.ts";
+import { busyHtml, startJob } from "../../lib/jobs/jobs.ts";
+import { z } from "zod";
+import { runPython } from "../../lib/python/python.ts";
+import { notify } from "../../lib/telegram/notify.ts";
+import { voiceChapters, type Voice } from "../../lib/tts/voice.ts";
 import {
   ABOUT_MD,
   SUMMARY_DIR,
@@ -21,15 +22,20 @@ import {
   setMaking,
   summaryItems,
   syncSummaries,
-} from "../library/summary.ts";
-import { textOptions } from "../library/topic.ts";
-import { LimitError, runClaude } from "../translate/claude.ts";
-import type { Feature } from "../types.ts";
-import { isMusic, videoInfo, type VideoInfo } from "../video/info.ts";
+} from "../../lib/library/summary.ts";
+import { textOptions } from "../../lib/library/topic/topic.ts";
+import { LimitError, runClaude } from "../../lib/claude/claude.ts";
+import type { Feature } from "../../lib/feature/types.ts";
+import { isMusic, videoInfo, type VideoInfo } from "../../lib/video/info.ts";
 import { speechText } from "./speech.ts";
 import { levelMarkdown, writeLevel, type Level } from "./summarize.ts";
 
 const TRANSCRIPT = "transcript.txt";
+/** What dzhura_helper_bot.summary.transcript prints: «whisper» before it listens, then where the text came from. */
+const TRANSCRIPT_EVENT = z.union([
+  z.object({ step: z.literal("whisper") }),
+  z.object({ source: z.string() }),
+]);
 
 /** Summaries are read ×1.15 faster than audiobooks. */
 const SUMMARY_TEMPO = 1.15;
@@ -91,7 +97,7 @@ async function showLoading(ctx: Context, text: string): Promise<void> {
     ctx.chat?.type === "private"
       ? ctx.editMessageReplyMarkup()
       : ctx.editMessageText(text)
-  ).catch(() => {});
+  ).catch(() => {}); // the loading hint is cosmetic; the work goes on
 }
 
 export const summary: Feature = {
@@ -126,14 +132,13 @@ async function prepare(
     if (!info) throw new Error("Couldn't read the video on YouTube");
     dir = await newVideoDir(id, info);
   }
-  if (!existsSync(path.join(dir, TRANSCRIPT)))
+  if (!(await statOrUndefined(path.join(dir, TRANSCRIPT))))
     for await (const event of runPython(
-      "src/features/summary/scripts/transcript.py",
+      "dzhura_helper_bot.summary.transcript",
       { id, dir },
-      { background: true },
+      { schema: TRANSCRIPT_EVENT, background: true },
     ))
-      if (event.step === "whisper")
-        await step("No subtitles, listening to the video…");
+      if ("step" in event) await step("No subtitles, listening to the video…");
   return {
     dir,
     info,
@@ -158,11 +163,12 @@ async function begin(
   level: Level,
   voice?: Voice,
 ): Promise<boolean> {
-  const chatId = config.ownerId;
+  const chatId = ownerId();
   const key = `${id}/${level}`;
   const audioKey = `${key}/audio`;
   const found = await findVideo(id);
-  const written = !!found && existsSync(levelFile(found.dir, level));
+  const written =
+    !!found && !!(await statOrUndefined(levelFile(found.dir, level)));
   if (voice) {
     if (found && (await audioFile(found.dir, level as FileLevel))) {
       await deliver(api, chatId, id, level, SUMMARY_DIR, "audio");
@@ -192,7 +198,7 @@ async function begin(
           `${icon} ${bold(text)}`,
           HTML,
         )
-        .catch(() => {});
+        .catch(() => {}); // a missed status edit is shown by the next step
     try {
       if (!written) await write(api, id, level, step);
       if (voice) {
@@ -201,7 +207,7 @@ async function begin(
       }
     } finally {
       setMaking(audioKey, false);
-      await api.deleteMessage(chatId, status.message_id).catch(() => {});
+      await api.deleteMessage(chatId, status.message_id).catch(() => {}); // a leftover status line is harmless
     }
     if (voice) await deliver(api, chatId, id, level, SUMMARY_DIR, "audio");
   };
@@ -247,7 +253,7 @@ async function write(
   } finally {
     setMaking(key, false);
   }
-  const link = await deliver(api, config.ownerId, id, level);
+  const link = await deliver(api, ownerId(), id, level);
   await reportAi(meter.record(`${OPERATIONS[level]} · ${title}`, link));
 }
 

@@ -1,18 +1,11 @@
 import { Context, type Api } from "grammy";
 import type { Update } from "grammy/types";
 import { describe, expect, it, vi } from "vitest";
-import { syncKaraoke } from "../library/karaoke.ts";
-import { karaoke } from "./index.ts";
+import { syncKaraoke } from "../../lib/library/karaoke.ts";
+import { enableYoutube, karaoke } from "./index.ts";
 import { runKaraoke } from "./pipeline.ts";
 
-vi.mock("../../config.ts", () => ({
-  config: {
-    ownerId: 7,
-    googleClientId: "id",
-    googleClientSecret: "secret",
-    youtubePlaylistId: "list",
-  },
-}));
+vi.mock("../../lib/telegram/owner.ts", () => ({ ownerId: () => 7 }));
 vi.mock("./youtube.ts", () => ({
   youtube: () => ({
     publish: vi.fn(async () => ({
@@ -21,11 +14,11 @@ vi.mock("./youtube.ts", () => ({
     })),
   }),
 }));
-vi.mock("../library/karaoke.ts", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../library/karaoke.ts")>()),
+vi.mock("../../lib/library/karaoke.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/library/karaoke.ts")>()),
   syncKaraoke: vi.fn(async () => undefined),
 }));
-vi.mock("../../jobs.ts", () => ({
+vi.mock("../../lib/jobs/jobs.ts", () => ({
   busyWith: vi.fn(),
   startJob: vi.fn((_name: string, job: () => Promise<void>) => {
     void job();
@@ -37,8 +30,8 @@ vi.mock("./pipeline.ts", () => ({
   runKaraoke: vi.fn(async function* () {}),
 }));
 
-vi.mock("../video/info.ts", async (original) => ({
-  ...(await original<typeof import("../video/info.ts")>()),
+vi.mock("../../lib/video/info.ts", async (original) => ({
+  ...(await original<typeof import("../../lib/video/info.ts")>()),
   videoInfo: vi.fn(async (id: string) =>
     id === "lecture0000"
       ? { title: "L", categories: ["Education"], chapters: [] }
@@ -47,6 +40,12 @@ vi.mock("../video/info.ts", async (original) => ({
         : { title: "S", categories: ["Music"], chapters: [] },
   ),
 }));
+
+enableYoutube({
+  clientId: "id",
+  clientSecret: "secret",
+  playlistId: "list",
+});
 
 describe("karaoke.actions", () => {
   it("offers nothing for a YouTube video that is not music", async () => {
@@ -144,6 +143,23 @@ describe("karaoke done message", () => {
         7,
         "✅ <b>Done</b> → https://t.me/c/1/2/3 (not added to the playlist)",
         { parse_mode: "HTML" },
+      ),
+    );
+  });
+});
+
+describe("karaoke lyrics not found", () => {
+  it("says the lyrics service is unreachable and offers both buttons", async () => {
+    vi.mocked(runKaraoke).mockImplementationOnce(async function* () {
+      yield { needLyrics: "unreachable", transcript: "la la" };
+    });
+    const api = fakeApi();
+    await pressMake(api, "karaoke:make:dQw4w9WgXcQ:music");
+    await vi.waitFor(() =>
+      expect(api.sendMessage).toHaveBeenCalledWith(
+        7,
+        "⚠️ <b>The lyrics service (LRCLIB) is unreachable</b>",
+        expect.objectContaining({ parse_mode: "HTML" }),
       ),
     );
   });

@@ -1,20 +1,10 @@
 import { fileURLToPath } from "node:url";
-import { bold, escape } from "../../format.ts";
-import { runClaude } from "../translate/claude.ts";
-import type { VideoInfo } from "../video/info.ts";
+import { runClaude } from "../../lib/claude/claude.ts";
+import type { VideoInfo } from "../../lib/video/info.ts";
+import { LEVEL_NAMES, videoUrl } from "../../lib/video/summary.ts";
 
 /** «about» is the description in the message; «brief» and «detailed» are the .md files made on request. */
 export type Level = "about" | "brief" | "detailed";
-
-/** The heading of each file's level. */
-export const LEVEL_NAMES = { brief: "Стисло", detailed: "Детально" } as const;
-
-/** Telegram's limit for a message's text. */
-const MAX_MESSAGE = 4096;
-
-function videoUrl(id: string): string {
-  return `https://youtu.be/${id}`;
-}
 
 /** 3725 → «1:02:05», 7 → «0:07»: the transcript's time format. */
 function stamp(seconds: number): string {
@@ -66,18 +56,6 @@ export function levelMarkdown(
 ): string {
   const source = [info.channel, videoUrl(id)].filter(Boolean).join(" · ");
   return `# ${info.title}\n\n## ${LEVEL_NAMES[level]}\n\n${source}\n\n${linkTimes(reply.trim(), id)}\n`;
-}
-
-/** The message: title, link and as many of the description's paragraphs as fit. */
-export function aboutMessage(title: string, id: string, about: string): string {
-  let text = `📝 ${bold(escape(title))}\n${videoUrl(id)}`;
-  for (const paragraph of about.split(/\n\s*\n/)) {
-    const part = `\n\n${escape(paragraph.trim())}`;
-    if (!paragraph.trim()) continue;
-    if (text.length + part.length > MAX_MESSAGE) break;
-    text += part;
-  }
-  return text;
 }
 
 /** Asks Claude for one level of the summary of `transcript`; returns its reply. */

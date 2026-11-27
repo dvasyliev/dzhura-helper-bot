@@ -1,0 +1,218 @@
+import { readdir } from "node:fs/promises";
+import path from "node:path";
+import type { Api } from "grammy";
+import { z } from "zod";
+import { readdirEntriesOrEmpty, statOrUndefined } from "../fs/absent.ts";
+import { readJsonOrUndefined } from "../fs/json.ts";
+import { bold, escape } from "../text/format.ts";
+import type { Version } from "../video/version.ts";
+import { uploads } from "../video/uploads.ts";
+import { contentsItem, coverUrl } from "./contents.ts";
+import { withGroup } from "./group.ts";
+import type { Item } from "./reconcile.ts";
+import { LIBRARY_FILE } from "./state.ts";
+import {
+  syncTopic,
+  TOPIC_ICONS,
+  type Synced,
+  type SyncOptions,
+} from "./topic/topic.ts";
+
+const KARAOKE_TOPIC = "karaoke";
+const TOPIC = { name: "Karaoke", icon: TOPIC_ICONS.karaoke };
+
+export type Song = {
+  folder: string;
+  /** The song's name in its file names: the folder's, without the YouTube id added to a second clip's folder. */
+  name: string;
+  id: string;
+  meta: { duration: number; width: number; height: number };
+  files: Partial<
+    Record<Version, { file: string; size: number; mtime: number }>
+  >;
+};
+
+/** The name each version has in the file name and the YouTube title. */
+export const VERSION_NAMES: Record<Version, string> = {
+  music: "Karaoke",
+  vocals: "Vocals",
+};
+
+const VERSIONS = Object.keys(VERSION_NAMES) as Version[];
+
+/** Where the songs, the YouTube uploads and the library state live; tests point them at a temp dir. */
+type Dirs = { karaoke: string; youtube: string; state: string };
+
+const DIRS: Dirs = {
+  karaoke: "data/karaoke",
+  youtube: "data/youtube.json",
+  state: LIBRARY_FILE,
+};
+
+/** The karaoke video's meta.json, as dzhura_helper_bot.karaoke.karaoke writes it. */
+export const KARAOKE_META = z.object({
+  id: z.string(),
+  duration: z.number(),
+  width: z.number(),
+  height: z.number(),
+});
+
+/** «S (Karaoke).mp4» → name S, version music; HQ copies and other files don't match. */
+const VIDEO = new RegExp(
+  `^(.*) \\((${Object.values(VERSION_NAMES).join("|")})\\)\\.mp4$`,
+);
+
+/** Songs in data/karaoke with a valid meta.json and at least one current version file. */
+export async function songs(dir: string = DIRS.karaoke): Promise<Song[]> {
+  const entries = await readdirEntriesOrEmpty(dir);
+  const result: Song[] = [];
+  for (const entry of entries.filter((e) => e.isDirectory())) {
+    const folder = entry.name;
+    const meta = await readJsonOrUndefined(
+      path.join(dir, folder, "meta.json"),
+      KARAOKE_META,
+    );
+    if (!meta) continue;
+    const files: Song["files"] = {};
+    let name = folder;
+    for (const file of await readdir(path.join(dir, folder))) {
+      const match = file.match(VIDEO);
+      const version = VERSIONS.find((v) => VERSION_NAMES[v] === match?.[2]);
+      if (!match || !version) continue;
+      const full = path.join(dir, folder, file);
+      const stats = await statOrUndefined(full);
+      if (!stats) continue;
+      name = match[1]!;
+      files[version] = { file: full, size: stats.size, mtime: stats.mtimeMs };
+    }
+    if (Object.keys(files).length === 0) continue;
+    const { id, ...video } = meta;
+    result.push({ folder, name, id, meta: video, files });
+  }
+  return result.sort((a, b) => (a.folder < b.folder ? -1 : 1));
+}
+
+/** The button that makes a missing version of the song with YouTube id `id`. */
+export function makeButton(
+  id: string,
+  version: Version,
+): { text: "🎤 Make it"; data: string } {
+  return { text: "🎤 Make it", data: `karaoke:make:${id}:${version}` };
+}
+
+const newest = (song: Song): number =>
+  Math.max(...Object.values(song.files).map((f) => f.mtime));
+
+/** The pinned first message: each song's name, then its versions, each a link to its message once posted. */
+function contents(
+  ordered: Song[],
+  link: (key: string) => string | undefined,
+): Item {
+  const lines = ordered.map((song) => {
+    const versions = VERSIONS.map((version) => {
+      const url = link(`${song.folder}/${version}`);
+      const name = VERSION_NAMES[version];
+      return url ? `<a href="${escape(url)}">${name}</a>` : name;
+    });
+    return `• ${escape(song.name)} — ${versions.join(" | ")}`;
+  });
+  return contentsItem(
+    `🎤 ${bold("Karaoke")} · ${ordered.length} songs\n`,
+    lines,
+  );
+}
+
+/**
+ * The contents, then per song its name and original clip under its cover (`<folder>/song`) and its two versions
+ * (`<folder>/music`, `<folder>/vocals`): posted songs keep their place, new ones go at the end, oldest first.
+ */
+export function karaokeItems(
+  all: Song[],
+  posted: string[],
+  youtube: Record<string, string>,
+  link: (key: string) => string | undefined = () => undefined,
+): Item[] {
+  const place = (song: Song): number => {
+    const index = posted.findIndex((key) => key.startsWith(`${song.folder}/`));
+    return index === -1 ? Infinity : index;
+  };
+  const ordered = [...all].sort((a, b) => {
+    const [pa, pb] = [place(a), place(b)];
+    return pa === pb ? newest(a) - newest(b) : pa < pb ? -1 : 1;
+  });
+  const songItems = ordered.flatMap((song): Item[] => [
+    {
+      key: `${song.folder}/song`,
+      kind: "text",
+      text: `🎤 ${bold(escape(song.name))}\nhttps://youtu.be/${song.id}`,
+      preview: coverUrl(song.id),
+    },
+    ...VERSIONS.map((version): Item => {
+      const key = `${song.folder}/${version}`;
+      const title = `${song.name} (${VERSION_NAMES[version]})`;
+      const videoId = youtube[title];
+      const made = song.files[version];
+      if (videoId) {
+        return {
+          key,
+          kind: "text",
+          text: `🎤 ${bold(escape(title))}\nhttps://youtu.be/${videoId}`,
+        };
+      }
+      if (made) {
+        return {
+          key,
+          kind: "video",
+          ...made,
+          caption: `🎤 ${bold(escape(title))}`,
+          video: song.meta,
+        };
+      }
+      return {
+        key,
+        kind: "text",
+        text: `⏳ ${bold(escape(title))} — not made yet`,
+        buttons: [makeButton(song.id, version)],
+      };
+    }),
+  ]);
+  return [contents(ordered, link), ...songItems];
+}
+
+/** Syncs the karaoke topic (`probe`: see `syncTopic`); undefined = no group. */
+export async function syncKaraoke(
+  api: Api,
+  dirs: Dirs = DIRS,
+  options: SyncOptions = {},
+): Promise<Synced | undefined> {
+  return withGroup(
+    api,
+    async (state) => {
+      const all = await songs(dirs.karaoke);
+      const youtube = uploads(dirs.youtube);
+      const sync = (link?: (key: string) => string | undefined) =>
+        syncTopic(
+          api,
+          state,
+          KARAOKE_TOPIC,
+          TOPIC,
+          karaokeItems(
+            all,
+            state.topics[KARAOKE_TOPIC]?.messages.map((m) => m.key) ?? [],
+            youtube,
+            link,
+          ),
+          dirs.state,
+          options,
+        );
+      const synced = await sync();
+      // The contents links the versions, known only once they are posted: a second pass edits it.
+      const again = await sync(synced.link);
+      return {
+        ...again,
+        changed: [...new Set([...synced.changed, ...again.changed])],
+      };
+    },
+    dirs.state,
+  );
+}

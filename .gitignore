@@ -9,5 +9,6 @@ __pycache__/
 
 # Added by the codebase-harness plugin
 /.coverage
+/.claude/worktrees/
 .ruff_cache/
 .pytest_cache/

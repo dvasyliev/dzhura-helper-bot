@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "../book/markdown.ts";
+import { parseMarkdown } from "../../lib/book/markdown.ts";
 import {
   assemble,
   MAX_CHUNK_CHARS,

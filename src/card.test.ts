@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { card, routeText } from "./card.ts";
-import type { Input } from "./input.ts";
+import type { Input } from "./lib/input/input.ts";
 
 const book: Input = {
   kind: "book",

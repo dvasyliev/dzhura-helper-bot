@@ -1,9 +1,9 @@
 import { InlineKeyboard, type Context } from "grammy";
-import type { Actions, Feature } from "./features/types.ts";
-import { bookCaption } from "./features/book/caption.ts";
-import { bookInfo, type BookInfo } from "./features/book/info.ts";
-import { bold, escape, quote } from "./format.ts";
-import { linkInput, type Input } from "./input.ts";
+import type { Actions, Feature } from "./lib/feature/types.ts";
+import { bookCaption } from "./lib/book/caption.ts";
+import { bookInfo, type BookInfo } from "./lib/book/info.ts";
+import { bold, escape, quote } from "./lib/text/format.ts";
+import { linkInput, type Input } from "./lib/input/input.ts";
 
 export type Card =
   | { kind: "none" }

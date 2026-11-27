@@ -1,8 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { menuCommands } from "./commands.ts";
 import { FEATURES } from "./features/index.ts";
-
-vi.mock("./config.ts", () => ({ config: { ownerId: 7 } }));
 
 describe("menuCommands", () => {
   const commands = menuCommands(FEATURES);

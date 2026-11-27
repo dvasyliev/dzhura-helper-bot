@@ -25,7 +25,9 @@ Then decide what the request needs:
 
 Use `superpowers:writing-plans`. List each scenario's user steps with the expected outcome on `- expect:` lines.
 
-If `superpowers:brainstorming` produced a written spec, show the plan and wait for the user's approval. Otherwise start at once. Either way, carry it out as `.claude/rules/plan-execution.md` says.
+Show the plan and wait for the user's approval when `superpowers:brainstorming` produced a written spec, or when the plan does something hard to undo: a database schema change or migration, a change to a public API, deleting data, or removing something users have. Otherwise start at once.
+
+Before the first task, decide where to work (`main` or a worktree) as the `feature-workflow` rule says; when it calls for offering a worktree, ask in the same `AskUserQuestion` call as the plan approval, if there is one. Then carry out the plan as `.claude/rules/plan-execution.md` says.
 
 With `playwright`: make the end-to-end tests the plan's last task, so the final review that both ways of carrying it out end with covers them; that review is the feature's review. The browser check stays with you, not the subagents.
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { folderKey } from "../translate/button.ts";
+import { folderKey } from "../../lib/book/folder-key.ts";
 import { audiobook } from "./index.ts";
 
 const input = (language: "en" | "ru" | "uk") => ({

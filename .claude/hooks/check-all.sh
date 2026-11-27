@@ -11,6 +11,13 @@ force=false
 if ! $force; then
   input=$(cat)
   [ "$(jq -r '.stop_hook_active // false' <<<"$input" 2>/dev/null)" = "true" ] && exit 0
+  # In a Claude worktree (.claude/worktrees/<name>/), check that worktree instead of the main checkout.
+  cwd=$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null)
+  worktrees="${CLAUDE_PROJECT_DIR:-}/.claude/worktrees/"
+  if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [[ "$cwd" == "$worktrees"* ]]; then
+    rest=${cwd#"$worktrees"}
+    cd "$worktrees${rest%%/*}" || exit 0
+  fi
   transcript=$(jq -r '.transcript_path // empty' <<<"$input" 2>/dev/null)
   if [ -f "$transcript" ]; then
     started=$(grep 'Async agent launched' "$transcript" | grep -oE 'agentId: [a-z0-9]+' | cut -d' ' -f2 | sort -u)

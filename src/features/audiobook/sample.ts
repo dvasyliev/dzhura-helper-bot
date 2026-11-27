@@ -4,11 +4,14 @@
 import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { parseEpub } from "../book/epub.ts";
-import { bookLanguage } from "./text.ts";
-import { voiceChapters, voicesFor } from "./voice.ts";
+import { parseArgs } from "node:util";
+import { parseEpub } from "../../lib/book/epub.ts";
+import { bookLanguage } from "../../lib/book/language.ts";
+import { voiceChapters, voicesFor } from "../../lib/tts/voice.ts";
 
-const [folder, wordsArg = "150"] = process.argv.slice(2);
+const {
+  positionals: [folder, wordsArg = "150"],
+} = parseArgs({ allowPositionals: true });
 if (!folder)
   throw new Error('Usage: npm run sample -- "<folder in data/books>" [words]');
 

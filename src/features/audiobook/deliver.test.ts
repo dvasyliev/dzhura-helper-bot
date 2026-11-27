@@ -1,15 +1,22 @@
 import type { Api } from "grammy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { syncBook } from "../library/books.ts";
-import type { Synced } from "../library/topic.ts";
+import { syncBook } from "../../lib/library/books.ts";
+import type { Synced } from "../../lib/library/topic/topic.ts";
 import { voiceBook } from "./deliver.ts";
-import { voiceChapters, type Voice, type VoiceEvent } from "./voice.ts";
+import {
+  voiceChapters,
+  type Voice,
+  type VoiceEvent,
+} from "../../lib/tts/voice.ts";
 
-vi.mock("./voice.ts", () => ({ voiceChapters: vi.fn() }));
+vi.mock("../../lib/tts/voice.ts", () => ({ voiceChapters: vi.fn() }));
 /** The book's tracks, as `chapters(book)` returns them; each test sets its own. */
 const tracks = vi.hoisted(() => ({ list: [] as unknown[] }));
-vi.mock("./library.ts", () => ({ chapters: () => tracks.list }));
-vi.mock("../library/books.ts", () => ({ syncBook: vi.fn() }));
+vi.mock("../../lib/book/tracks.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/book/tracks.ts")>()),
+  chapters: () => tracks.list,
+}));
+vi.mock("../../lib/library/books.ts", () => ({ syncBook: vi.fn() }));
 
 const book = {
   title: "Book",

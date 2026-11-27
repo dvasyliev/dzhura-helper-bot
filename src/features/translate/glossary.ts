@@ -1,16 +1,13 @@
-import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { runPython } from "../../python.ts";
-import { bookLanguage } from "../audiobook/text.ts";
-import type { Book } from "../book/epub.ts";
-import { runClaude } from "./claude.ts";
+import { runPython } from "../../lib/python/python.ts";
+import { bookLanguage } from "../../lib/book/language.ts";
+import type { Book } from "../../lib/book/epub.ts";
+import { runClaude } from "../../lib/claude/claude.ts";
 import { LANGUAGE, langFile } from "./lang.ts";
 import type { Term } from "./check.ts";
 
 const PROMPT = langFile(LANGUAGE, "glossary-prompt.md");
-const SCRIPT = fileURLToPath(
-  new URL("scripts/glossary_candidates.py", import.meta.url),
-);
+const MODULE = "dzhura_helper_bot.translate.glossary_candidates";
 
 const CANDIDATE = z.object({
   term: z.string(),
@@ -22,15 +19,22 @@ const REPLY = z.object({ candidates: z.array(CANDIDATE) });
 export type Candidate = z.infer<typeof CANDIDATE>;
 export type Glossary = { title: string; author?: string; terms: Term[] };
 
-/** Words of the book at `bookFile` (book.md) likely to need a glossary entry, from scripts/glossary_candidates.py. */
+/** Words of the book at `bookFile` (book.md) likely to need a glossary entry, from dzhura_helper_bot.translate.glossary_candidates. */
 export async function candidates(
   bookFile: string,
   language?: string,
 ): Promise<Candidate[]> {
   let found: Candidate[] | undefined;
-  for await (const reply of runPython(SCRIPT, { book: bookFile, language }))
-    found = REPLY.parse(reply).candidates;
-  if (!found) throw new Error("glossary_candidates.py printed no reply");
+  for await (const reply of runPython(
+    MODULE,
+    {
+      book: bookFile,
+      language,
+    },
+    { schema: REPLY },
+  ))
+    found = reply.candidates;
+  if (!found) throw new Error("glossary_candidates printed no reply");
   return found;
 }
 

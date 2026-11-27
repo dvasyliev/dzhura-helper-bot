@@ -3,16 +3,16 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { syncSummaries } from "../library/summary.ts";
+import { syncSummaries } from "../../lib/library/summary.ts";
 import { deliver, summary } from "./index.ts";
 
-vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
-vi.mock("../library/summary.ts", async (original) => ({
-  ...(await original<typeof import("../library/summary.ts")>()),
+vi.mock("../../lib/telegram/owner.ts", () => ({ ownerId: () => 7 }));
+vi.mock("../../lib/library/summary.ts", async (original) => ({
+  ...(await original<typeof import("../../lib/library/summary.ts")>()),
   syncSummaries: vi.fn(),
 }));
-vi.mock("../video/info.ts", async (original) => ({
-  ...(await original<typeof import("../video/info.ts")>()),
+vi.mock("../../lib/video/info.ts", async (original) => ({
+  ...(await original<typeof import("../../lib/video/info.ts")>()),
   videoInfo: vi.fn(async (id: string) =>
     id === "song0000000"
       ? { title: "S", categories: ["Music"], chapters: [] }

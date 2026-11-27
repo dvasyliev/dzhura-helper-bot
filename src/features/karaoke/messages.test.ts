@@ -47,7 +47,7 @@ describe("friendly", () => {
       "couldn't download the clip from YouTube",
     ],
     [
-      "karaoke.py exited with code 1",
+      "karaoke exited with code 1",
       "processing failed, details in the bot's log",
     ],
     ["YouTube 500: <html>oops</html>", "YouTube answered with error 500"],

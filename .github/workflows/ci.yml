@@ -31,11 +31,11 @@ jobs:
           path: |
             ~/.cache/accentuk
             ~/.cache/audiobook-bot
-          key: stress-${{ hashFiles('uv.lock', 'src/features/audiobook/scripts/uk/stress_index.py') }}
+          key: stress-${{ hashFiles('uv.lock', 'src/dzhura_helper_bot/audiobook/uk/stress_index.py') }}
       - if: steps.stress.outputs.cache-hit != 'true'
         run: |
           uv run accentuk download --light
-          uv run python src/features/audiobook/scripts/uk/stress_index.py
+          uv run python -m dzhura_helper_bot.audiobook.uk.stress_index
       - run: npm run check
 
   commitlint:

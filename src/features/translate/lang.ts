@@ -12,7 +12,7 @@ export function langFile(code: string, name: string): string {
 
 /**
  * How a glossary term is found in a book's text: "whole" words (English: Fogg, Fogg's; not Brazil in Brazilian), or
- * by "stem" for a language that declines names. Same values as `TermMatch` in scripts/language.py.
+ * by "stem" for a language that declines names. Same values as `TermMatch` in dzhura_helper_bot.translate.language.
  */
 export type TermMatch = "whole" | "stem";
 

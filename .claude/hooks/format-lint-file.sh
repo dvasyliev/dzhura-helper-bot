@@ -12,6 +12,13 @@ cd "$CLAUDE_PROJECT_DIR" || exit 0
 
 # Skip files outside the project; its tools do not cover them.
 [[ "$path" == "$CLAUDE_PROJECT_DIR"/* ]] || exit 0
+
+# A file in a Claude worktree (.claude/worktrees/<name>/) is checked from that worktree.
+worktrees="$CLAUDE_PROJECT_DIR/.claude/worktrees/"
+if [[ "$path" == "$worktrees"* ]]; then
+  rest=${path#"$worktrees"}
+  cd "$worktrees${rest%%/*}" || exit 0
+fi
 ext=${path##*.}
 
 # Run each file check from .claude/harness.json that covers this extension.

@@ -122,7 +122,7 @@ Once, after `uv sync`:
 
 ```bash
 uv run accentuk download --light
-uv run python src/features/audiobook/scripts/uk/stress_index.py
+uv run python -m dzhura_helper_bot.audiobook.uk.stress_index
 ```
 
 - The first command downloads the stress model (~375 MB) into `~/.cache/accentuk`.
@@ -134,7 +134,7 @@ Nothing to do. HolosTTS (a few hundred MB) and Kokoro (`mlx-community/Kokoro-82M
 
 ### 3.4. Voices
 
-The voice buttons are in [voices.json](src/features/audiobook/voices.json), grouped by language. Each voice has `id`, `name` (the button) and `provider` (`holos` for Ukrainian, `kokoro` for English). Every voice of the book's language becomes a button. Kokoro's other English voices are in its [voice list](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md): an id starting with `a` is American, with `b` British.
+The voice buttons are in [voices.json](src/lib/tts/voices.json), grouped by language. Each voice has `id`, `name` (the button) and `provider` (`holos` for Ukrainian, `kokoro` for English). Every voice of the book's language becomes a button. Kokoro's other English voices are in its [voice list](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md): an id starting with `a` is American, with `b` British.
 
 ### 3.5. Check
 

@@ -1,0 +1,4 @@
+# Gitignored files Claude Code copies into every worktree it creates (.claude/worktrees/).
+# The env files hold the secrets the dev server and the tests need.
+.env
+.env.*

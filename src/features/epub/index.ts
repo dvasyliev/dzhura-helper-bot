@@ -1,22 +1,19 @@
 import { Composer, type Context } from "grammy";
+import { readdirOrEmpty } from "../../lib/fs/absent.ts";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { SEND_AGAIN } from "../audiobook/index.ts";
-import { folders, loadBook } from "../audiobook/library.ts";
-import {
-  BOOKS_DIR,
-  bookLanguage,
-  bookName,
-  safeFilename,
-} from "../audiobook/text.ts";
-import { bold, code, HTML, problem } from "../../format.ts";
-import type { Input } from "../../input.ts";
-import { readInfo } from "../book/info.ts";
-import { BOOK_MD } from "../book/markdown.ts";
-import { BOOK_EPUB, buildEpub } from "../book/pandoc.ts";
-import { sendEpub } from "../library/send.ts";
-import { findFolder, folderKey } from "../translate/button.ts";
-import type { Actions, Feature } from "../types.ts";
+import { folders, tryLoadBook } from "../../lib/shelf/shelf.ts";
+import { BOOKS_DIR, bookName, safeFilename } from "../../lib/shelf/names.ts";
+import { bookLanguage } from "../../lib/book/language.ts";
+import { bold, code, HTML, problem } from "../../lib/text/format.ts";
+import type { Input } from "../../lib/input/input.ts";
+import { readInfo } from "../../lib/book/info.ts";
+import { BOOK_MD } from "../../lib/book/markdown.ts";
+import { BOOK_EPUB, buildEpub } from "../../lib/book/pandoc.ts";
+import { sendEpub } from "../../lib/library/send.ts";
+import { findFolder, folderKey } from "../../lib/book/folder-key.ts";
+import type { Actions, Feature } from "../../lib/feature/types.ts";
 
 const BUTTON = "📘 Make EPUB";
 
@@ -51,9 +48,9 @@ const composer = new Composer<Context>();
 composer.callbackQuery(/^epub:([0-9a-f]+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
   const folder = findFolder(ctx.match[1]!, await folders());
-  const book = folder && (await loadBook(folder).catch(() => undefined));
+  const book = folder && (await tryLoadBook(folder));
   const dir = folder && path.join(BOOKS_DIR, folder);
-  const files = dir ? await readdir(dir).catch((): string[] => []) : [];
+  const files = dir ? await readdirOrEmpty(dir) : [];
   if (!folder || !dir || !book || !files.includes(BOOK_MD))
     return ctx.reply(SEND_AGAIN, HTML);
   const file = path.join(dir, BOOK_EPUB);

@@ -5,9 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { Context } from "grammy";
 import type { ChatMember } from "grammy/types";
 import type { Api } from "grammy";
-import { loadBook } from "../audiobook/library.ts";
-import { bookInfo } from "../book/info.ts";
-import { bookFolders, syncBook } from "./books.ts";
+import { tryLoadBook } from "../../lib/shelf/shelf.ts";
+import { bookInfo } from "../../lib/book/info.ts";
+import { bookFolders, syncBook } from "../../lib/library/books.ts";
 import {
   keepsTopics,
   memberChange,
@@ -15,23 +15,25 @@ import {
   privateOnly,
   publish,
 } from "./index.ts";
-import { loadState, saveState } from "./state.ts";
-import { syncKaraoke } from "./karaoke.ts";
-import { syncSummaries } from "./summary.ts";
-import type { Synced } from "./topic.ts";
+import { loadState, saveState } from "../../lib/library/state.ts";
+import { syncKaraoke } from "../../lib/library/karaoke.ts";
+import { syncSummaries } from "../../lib/library/summary.ts";
+import type { Synced } from "../../lib/library/topic/topic.ts";
 
-vi.mock("../../config.ts", () => ({ config: { ownerId: 7 } }));
-vi.mock("./books.ts", () => ({
+vi.mock("../../lib/telegram/owner.ts", () => ({ ownerId: () => 7 }));
+vi.mock("../../lib/library/books.ts", () => ({
   bookFolders: vi.fn(),
   syncBook: vi.fn(),
   topicName: (book: { title: string }) => book.title,
 }));
-vi.mock("./karaoke.ts", () => ({ syncKaraoke: vi.fn() }));
-vi.mock("./summary.ts", () => ({ syncSummaries: vi.fn() }));
-vi.mock("../audiobook/library.ts", () => ({
-  loadBook: vi.fn(async () => undefined),
+vi.mock("../../lib/library/karaoke.ts", () => ({ syncKaraoke: vi.fn() }));
+vi.mock("../../lib/library/summary.ts", () => ({ syncSummaries: vi.fn() }));
+vi.mock("../../lib/shelf/shelf.ts", () => ({
+  tryLoadBook: vi.fn(async () => undefined),
 }));
-vi.mock("../book/info.ts", () => ({ bookInfo: vi.fn(async () => ({})) }));
+vi.mock("../../lib/book/info.ts", () => ({
+  bookInfo: vi.fn(async () => ({})),
+}));
 
 const user = { id: 1, is_bot: true, first_name: "bot" };
 const admin = {
@@ -137,7 +139,7 @@ describe("publish", () => {
 
   it("shows each topic's progress while it syncs, and its name", async () => {
     vi.mocked(bookFolders).mockResolvedValue(["A"]);
-    vi.mocked(loadBook).mockResolvedValue({ title: "Book A" } as never);
+    vi.mocked(tryLoadBook).mockResolvedValue({ title: "Book A" } as never);
     vi.mocked(syncBook).mockImplementation(
       async (_api, _folder, _dirs, options) => {
         options?.progress?.(1, 2);
@@ -159,7 +161,7 @@ describe("publish", () => {
     const order: string[] = [];
     const book = { title: "A", chapters: [] };
     vi.mocked(bookFolders).mockResolvedValue(["A"]);
-    vi.mocked(loadBook).mockResolvedValue(book as never);
+    vi.mocked(tryLoadBook).mockResolvedValue(book as never);
     vi.mocked(bookInfo).mockImplementationOnce(async () => {
       order.push("info");
       return {};

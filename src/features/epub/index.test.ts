@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { folderKey } from "../translate/button.ts";
+import { folderKey } from "../../lib/book/folder-key.ts";
 import { canMakeEpub, epubActions } from "./index.ts";
 
 async function folder(files: string[]): Promise<string> {

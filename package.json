@@ -8,9 +8,9 @@
   },
   "scripts": {
     "test": "vitest run",
-    "start": "pkill -f 'tsx src/[i]ndex.ts'; while pgrep -f 'tsx src/[i]ndex.ts' >/dev/null; do sleep 0.2; done; tsx src/index.ts",
+    "start": "pkill -f 'tsx.* src/[i]ndex.ts'; while pgrep -f 'tsx.* src/[i]ndex.ts' >/dev/null; do sleep 0.2; done; tsx --env-file-if-exists=.env src/index.ts",
     "typecheck": "tsc --noEmit",
-    "sample": "tsx src/features/audiobook/sample.ts",
+    "sample": "tsx --env-file-if-exists=.env src/features/audiobook/sample.ts",
     "check": ".claude/hooks/check-all.sh --force",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -19,7 +19,9 @@
     "lint:file": "oxlint --deny-warnings",
     "knip": "knip --no-progress --reporter compact",
     "dupes": "jscpd src --threshold 0 --reporters console --format \"javascript,typescript,jsx,tsx,python\"",
-    "prepare": "git config core.hooksPath .githooks"
+    "prepare": "git config core.hooksPath .githooks",
+    "deps": "depcruise src --config .dependency-cruiser.cjs --ignore-known --output-type err",
+    "deps:baseline": "depcruise-baseline src --config .dependency-cruiser.cjs"
   },
   "keywords": [],
   "author": "",
@@ -27,17 +29,19 @@
   "type": "module",
   "dependencies": {
     "@grammyjs/auto-retry": "^2.0.2",
-    "dotenv": "^18.0.10",
     "grammy": "^1.48.0",
     "jszip": "^3.10.2",
     "node-html-parser": "^9.0.7",
+    "p-retry": "^9.0.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
     "@secretlint/secretlint-rule-preset-recommend": "^13.1.0",
+    "@swc/core": "^1.16.22",
     "@types/node": "^26.6.7",
+    "dependency-cruiser": "^18.9.0",
     "jscpd": "^5.4.3",
     "knip": "^6.48.0",
     "lint-staged": "^17.6.2",

@@ -1,0 +1,30 @@
+[
+  {
+    "type": "dependency",
+    "from": "src/features/epub/index.ts",
+    "to": "src/features/audiobook/index.ts",
+    "unresolvedTo": "../audiobook/index.ts",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "units-independent"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/features/translate/index.ts",
+    "to": "src/features/audiobook/index.ts",
+    "unresolvedTo": "../audiobook/index.ts",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "units-independent"
+    }
+  }
+]

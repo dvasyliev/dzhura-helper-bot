@@ -1,34 +1,45 @@
 import { Composer, InlineKeyboard, type Context } from "grammy";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { offer, SEND_AGAIN } from "../audiobook/index.ts";
-import { notify } from "../audiobook/deliver.ts";
-import { folders, loadBook } from "../audiobook/library.ts";
+import { readFileOrUndefined } from "../../lib/fs/absent.ts";
+import { notify } from "../../lib/telegram/notify.ts";
+import { folders, loadBook, tryLoadBook } from "../../lib/shelf/shelf.ts";
 import {
   BOOKS_DIR,
   bookName,
   safeFilename,
   translationFolder,
-} from "../audiobook/text.ts";
-import { reportAi } from "../../ai-usage.ts";
-import { leftByPace, leftText } from "../../eta.ts";
-import { bold, code, escape, HTML, problem, quote } from "../../format.ts";
-import type { Book } from "../book/epub.ts";
-import { readInfo } from "../book/info.ts";
-import { parseMarkdown } from "../book/markdown.ts";
-import { sendEpub } from "../library/send.ts";
-import type { Feature } from "../types.ts";
-import { findFolder, folderKey, translateButton } from "./button.ts";
-import type { Usage } from "./claude.ts";
+} from "../../lib/shelf/names.ts";
+import { reportAi } from "../../lib/claude/ai-usage.ts";
+import { leftByPace, leftText } from "../../lib/text/eta.ts";
+import {
+  bold,
+  code,
+  escape,
+  HTML,
+  problem,
+  quote,
+} from "../../lib/text/format.ts";
+import type { Book } from "../../lib/book/epub.ts";
+import { readInfo } from "../../lib/book/info.ts";
+import { parseMarkdown } from "../../lib/book/markdown.ts";
+import { sendEpub } from "../../lib/library/send.ts";
+import type { Feature } from "../../lib/feature/types.ts";
+import {
+  findFolder,
+  folderKey,
+  translateButton,
+} from "../../lib/book/folder-key.ts";
+import { SOURCE_MD } from "../../lib/book/markdown.ts";
+import type { Usage } from "../../lib/claude/claude.ts";
 import { splitChunks } from "./chunks.ts";
 import { doneCount, unfinishedTranslations } from "./library.ts";
 import {
   PARALLEL,
-  SOURCE_MD,
   translateBook,
   translateMinutes,
   type Progress,
-} from "./pipeline.ts";
+} from "./pipeline/pipeline.ts";
 
 const MENU = `🌐 ${bold("Translate a book")}\nSend an EPUB or PDF book in English or Russian, then press «🌐 Translate to Ukrainian».`;
 
@@ -40,7 +51,7 @@ const composer = new Composer<Context>();
 // Buttons carry `folderKey` of the book folder, so an old button never picks another book.
 // From the voice offer or the Russian reply: the source is the audiobook folder's book.
 composer.callbackQuery(/^translate:([0-9a-f]+)$/, async (ctx) =>
-  begin(ctx, findFolder(ctx.match[1], await folders()), loadBook),
+  begin(ctx, findFolder(ctx.match[1], await folders()), tryLoadBook),
 );
 
 // From the menu: the source is the source.md the translation folder already has.
@@ -48,14 +59,12 @@ composer.callbackQuery(/^continue:([0-9a-f]+)$/, async (ctx) =>
   begin(
     ctx,
     findFolder(ctx.match[1], await unfinishedTranslations()),
-    async (folder) =>
-      parseMarkdown(
-        await readFile(
-          path.join(BOOKS_DIR, translationFolder(folder), SOURCE_MD),
-          "utf8",
-        ),
-        folder,
-      ),
+    async (folder) => {
+      const text = await readFileOrUndefined(
+        path.join(BOOKS_DIR, translationFolder(folder), SOURCE_MD),
+      );
+      return text === undefined ? undefined : parseMarkdown(text, folder);
+    },
   ),
 );
 
@@ -88,7 +97,7 @@ async function begin(
 ) {
   if (running) return ctx.answerCallbackQuery(busy(running));
   await ctx.answerCallbackQuery();
-  const source = folder ? await load(folder).catch(() => undefined) : undefined;
+  const source = folder ? await load(folder) : undefined;
   if (!folder || !source) return ctx.reply(SEND_AGAIN, HTML);
   if (running) return ctx.reply(busyHtml(running), HTML);
   running = source.title;
@@ -148,7 +157,7 @@ async function run(ctx: Context, chatId: number, folder: string, source: Book) {
       shown = text;
       await ctx.api
         .editMessageText(chatId, status.message_id, text, HTML)
-        .catch(() => {});
+        .catch(() => {}); // a missed progress edit is shown by the next one
     },
     onLimit: (resetAt) =>
       notify(

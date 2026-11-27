@@ -3,20 +3,16 @@
   "entry": [
     "**/*.{js,mjs,cjs,ts,mts,cts}",
     "!**/*.config.*",
+    "!.dependency-cruiser.cjs",
     "!{.venv,dist,build,coverage}/**"
   ],
   "includeEntryExports": true,
   "ignoreDependencies": [
     "@commitlint/cli",
     "lint-staged",
-    "@secretlint/secretlint-rule-preset-recommend"
+    "@secretlint/secretlint-rule-preset-recommend",
+    "@swc/core"
   ],
-  "ignore": [
-    ".claude/**"
-  ],
-  "ignoreBinaries": [
-    "uv",
-    "pandoc",
-    "taskpolicy"
-  ]
+  "ignore": [".claude/**"],
+  "ignoreBinaries": ["uv", "pandoc", "taskpolicy"]
 }

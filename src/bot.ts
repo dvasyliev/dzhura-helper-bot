@@ -1,22 +1,22 @@
 import { autoRetry } from "@grammyjs/auto-retry";
 import { Bot, InlineKeyboard, InputFile, type Context } from "grammy";
 import { cardFor, routeText, type Card } from "./card.ts";
-import { config } from "./config.ts";
+import { ownerId } from "./lib/telegram/owner.ts";
 import { FEATURES } from "./features/index.ts";
 import { label, menuCommands } from "./commands.ts";
 import { library, privateOnly } from "./features/library/index.ts";
-import type { Feature } from "./features/types.ts";
-import { bold, escape, HTML } from "./format.ts";
-import { receiveBook, type Input } from "./input.ts";
-import { bookSearch } from "./search.ts";
+import type { Feature } from "./lib/feature/types.ts";
+import { bold, escape, HTML } from "./lib/text/format.ts";
+import { receiveBook, type Input } from "./lib/input/input.ts";
+import { bookSearch } from "./lib/input/search.ts";
 
-export function createBot(): Bot {
-  const bot = new Bot(config.botToken);
+export function createBot(token: string): Bot {
+  const bot = new Bot(token);
   // Waits out rate limits and network drops, but gives up after a few tries so a job can't hang forever.
   bot.api.config.use(autoRetry({ maxDelaySeconds: 300, maxRetryAttempts: 5 }));
 
   bot.use(async (ctx, next) => {
-    if (ctx.from?.id === config.ownerId) await next();
+    if (ctx.from?.id === ownerId()) await next();
   });
   bot.use(privateOnly);
   bot.use(library);

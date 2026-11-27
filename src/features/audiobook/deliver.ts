@@ -1,19 +1,25 @@
 import { InputFile, type Api } from "grammy";
 import path from "node:path";
-import type { Book } from "../book/epub.ts";
-import { syncBook } from "../library/books.ts";
-import type { Synced } from "../library/topic.ts";
+import type { Book } from "../../lib/book/epub.ts";
+import { syncBook } from "../../lib/library/books.ts";
+import type { Synced } from "../../lib/library/topic/topic.ts";
+import { type ShelfBook } from "../../lib/shelf/shelf.ts";
+import { leftByPace, leftText } from "../../lib/text/eta.ts";
+import { HTML, bold, code, escape, problem } from "../../lib/text/format.ts";
 import {
+  audioCaption,
+  audioTitle,
+  bookPartMessage,
+} from "../../lib/book/audio-caption.ts";
+import {
+  bookParts,
   chapters as bookChapters,
   type Chapter,
-  type ShelfBook,
-} from "./library.ts";
-import { leftByPace, leftText } from "../../eta.ts";
-import { HTML, bold, code, escape, problem } from "../../format.ts";
-import { audioCaption, audioTitle, bookPartMessage } from "./captions.ts";
-import { bookParts } from "./tracks.ts";
-import { bookPaths, voicingMinutes } from "./text.ts";
-import { voiceChapters, type Voice } from "./voice.ts";
+} from "../../lib/book/tracks.ts";
+import { bookPaths } from "../../lib/shelf/names.ts";
+import { voicingMinutes } from "./text.ts";
+import { voiceChapters, type Voice } from "../../lib/tts/voice.ts";
+import { notify } from "../../lib/telegram/notify.ts";
 
 /**
  * Voices `todo` in reading order; each chapter goes out once it is voiced, so listening can start. With a library group "going out" syncs the
@@ -207,18 +213,5 @@ async function sendReport(
     });
   } catch (error) {
     console.error("sendDocument failed:", error);
-  }
-}
-
-/** Sends `text` (HTML); a failed status message must not stop the book. */
-export async function notify(
-  api: Api,
-  chatId: number,
-  text: string,
-): Promise<void> {
-  try {
-    await api.sendMessage(chatId, text, HTML);
-  } catch (error) {
-    console.error("sendMessage failed:", error);
   }
 }

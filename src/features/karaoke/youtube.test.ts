@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { uploads, youtube } from "./youtube.ts";
+import { youtube } from "./youtube.ts";
 
 type Seen = { method: string; url: string; body: string };
 
@@ -15,6 +15,8 @@ async function fakeGoogle(
     polls?: string[];
     deleteStatus?: number | "drop";
     playlistFails?: number;
+    /** The status a failing playlist add answers with (default 503). */
+    playlistStatus?: number;
   } = {},
 ) {
   let playlistFails = opts.playlistFails ?? 0;
@@ -63,7 +65,7 @@ async function fakeGoogle(
       return json(200, { id: "v1" });
     if (url.startsWith("/api/youtube/v3/playlistItems"))
       return playlistFails-- > 0
-        ? json(503, { error: "backend" })
+        ? json(opts.playlistStatus ?? 503, { error: "backend" })
         : json(200, { id: "item" });
     if (
       req.method === "DELETE" &&
@@ -105,7 +107,7 @@ function setup(base: string, store: object) {
     storeFile,
     oauthUrl: `${base}/oauth`,
     apiUrl: `${base}/api`,
-    retryMs: 0,
+    minTimeout: 1,
   });
   return {
     yt,
@@ -247,6 +249,35 @@ describe("youtube.publish", () => {
     ).toEqual({ url: "https://youtu.be/v1", inPlaylist: true });
   });
 
+  it.each([
+    [400, 1],
+    [401, 1],
+    [403, 1],
+    [404, 2],
+    [409, 2],
+  ])(
+    "a playlist add that fails with a %i is tried %i time(s)",
+    async (playlistStatus, tries) => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const google = await fakeGoogle({
+        playlistFails: 1,
+        playlistStatus,
+      });
+      const { yt, file } = setup(google.base, {
+        refreshToken: "R",
+        videos: {},
+      });
+      expect(
+        await yt.publish({ file, title: "T", description: "" }, noLogin),
+      ).toEqual({ url: "https://youtu.be/v1", inPlaylist: tries > 1 });
+      expect(
+        google.seen.filter((r) =>
+          r.url.startsWith("/api/youtube/v3/playlistItems"),
+        ),
+      ).toHaveLength(tries);
+    },
+  );
+
   it("still gives the link, remembers it and replaces the old copy when the playlist add keeps failing", async () => {
     const google = await fakeGoogle({ playlistFails: 99 });
     const { yt, file, stored } = replacingOld(google.base);
@@ -279,23 +310,5 @@ describe("youtube.publish", () => {
     );
     const insert = google.seen.find((r) => r.url.startsWith("/api/upload"))!;
     expect(JSON.parse(insert.body).snippet.title).toHaveLength(100);
-  });
-});
-
-describe("uploads", () => {
-  it("gives the video ids by title, without the token", () => {
-    const store = path.join(
-      mkdtempSync(path.join(tmpdir(), "yt-")),
-      "youtube.json",
-    );
-    writeFileSync(
-      store,
-      JSON.stringify({ refreshToken: "secret", videos: { A: "1" } }),
-    );
-    expect(uploads(store)).toEqual({ A: "1" });
-  });
-
-  it("is empty without the store file", () => {
-    expect(uploads(path.join(tmpdir(), "missing-youtube.json"))).toEqual({});
   });
 });

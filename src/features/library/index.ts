@@ -1,23 +1,27 @@
 import { Composer, type Api, type Context, type NextFunction } from "grammy";
 import type { Chat, ChatMember } from "grammy/types";
-import { config } from "../../config.ts";
-import { busyHtml, startJob } from "../../jobs.ts";
-import { bold, escape, HTML, problem } from "../../format.ts";
-import { loadBook } from "../audiobook/library.ts";
-import { bookInfo } from "../book/info.ts";
-import { bookFolders, syncBook, topicName } from "./books.ts";
-import { liveStatus, publishStatus, type Row } from "./progress.ts";
-import type { Synced } from "./topic.ts";
-import { resetUnavailable } from "./group.ts";
-import { syncKaraoke } from "./karaoke.ts";
-import { syncSummaries } from "./summary.ts";
+import { ownerId } from "../../lib/telegram/owner.ts";
+import { busyHtml, startJob } from "../../lib/jobs/jobs.ts";
+import { bold, escape, HTML, problem } from "../../lib/text/format.ts";
+import { tryLoadBook } from "../../lib/shelf/shelf.ts";
+import { bookInfo } from "../../lib/book/info.ts";
+import { bookFolders, syncBook, topicName } from "../../lib/library/books.ts";
+import {
+  liveStatus,
+  publishStatus,
+  type Row,
+} from "../../lib/library/progress.ts";
+import type { Synced } from "../../lib/library/topic/topic.ts";
+import { resetUnavailable } from "../../lib/library/group.ts";
+import { syncKaraoke } from "../../lib/library/karaoke.ts";
+import { syncSummaries } from "../../lib/library/summary.ts";
 import {
   LIBRARY_FILE,
   loadState,
   saveState,
   serial,
   type LibraryState,
-} from "./state.ts";
+} from "../../lib/library/state.ts";
 
 export const PUBLISH_COMMAND = {
   command: "publish",
@@ -67,9 +71,7 @@ export async function publish(
   show: (text: string, final?: boolean) => Promise<void>,
 ): Promise<void> {
   const folders = await bookFolders();
-  const books = await Promise.all(
-    folders.map((folder) => loadBook(folder).catch(() => undefined)),
-  );
+  const books = await Promise.all(folders.map((folder) => tryLoadBook(folder)));
   const rows: Row[] = [
     ...folders.map((folder, i): Row => {
       const book = books[i];
@@ -143,7 +145,7 @@ export function memberChange(
 library.on("my_chat_member", async (ctx) => {
   const { chat, new_chat_member: member } = ctx.myChatMember;
   const note = await memberChange(chat, member);
-  if (note) await ctx.api.sendMessage(config.ownerId, note, HTML);
+  if (note) await ctx.api.sendMessage(ownerId(), note, HTML);
 });
 
 library.command("publish", async (ctx) => {

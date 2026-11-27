@@ -20,6 +20,20 @@ if [ -f pyproject.toml ] && [ ! -d .venv ]; then
 fi
 $installed && echo "- Dependencies: installed."
 
+# Warn if the node on PATH is not the version the project asks for (.nvmrc, else .node-version).
+# Only a plain version (24, v24.18, 24.18.1) is compared, whole parts at a time; aliases and ranges are skipped.
+for f in .nvmrc .node-version; do
+  [ -f "$f" ] || continue
+  want=$(head -n 1 "$f" | tr -d '\r ')
+  if printf '%s' "$want" | grep -Eq '^v?[0-9]+(\.[0-9]+){0,2}$' && have=$(node --version 2>/dev/null) && [ -n "$have" ]; then
+    want=${want#v}
+    case "${have#v}." in "$want."*) ;; *)
+      echo "- WARNING: node on PATH is $have, the project asks for $want ($f). Hooks and checks run on $have."
+    esac
+  fi
+  break
+done
+
 # Warn if a dev server already runs, so Claude does not start a second one.
 if [ -n "$port" ]; then
   if nc -z localhost "$port" >/dev/null 2>&1; then

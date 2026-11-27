@@ -13,7 +13,7 @@ When to use what the platform gives and when to reach for a library. The platfor
 Go through these in order and stop at the first that fits.
 
 1. **Logic specific to this project** (its data rules, permissions, domain calculations): write it. No library knows it.
-2. **The platform solves the whole job:** use it. It adds no dependency.
+2. **The platform solves the whole job:** use it. It adds no dependency. The platform is the project's lowest Node version (`engines.node`, else `.nvmrc`): a newer API (such as `RegExp.escape`, Node 24) counts only when that version has it.
 3. **The platform solves only part of it, and the rest needs workaround code:** use a library.
 4. **Generic logic is written, or is about to be written, more than once:** use a library, if the logic is hard to get right (retries, parsing, validation). If the repeat is a few simple lines, a shared helper is enough.
 
@@ -35,7 +35,7 @@ A job from a section below uses that section's choice. For a job not listed, ask
 
 **Platform:** TypeScript types and JSDoc check nothing at run time; data from outside the code can be anything.
 
-**Library:** Zod for data from outside the code: request bodies, query values, files, settings from the environment. Do not check these by hand or cast them.
+**Library:** Zod for data from outside the code: request bodies, query values, files, settings from the environment, another program's output. Do not check these by hand or cast them.
 
 - Validate where the data comes in (a route, a script's input); code behind it gets typed data and does not check again.
 - Validate a third-party API's response only where a wrong answer would do real harm.
@@ -51,6 +51,7 @@ A job from a section below uses that section's choice. For a job not listed, ask
 **Library:** p-retry for a call that can pass on its own (a timeout, 429, 502, 503, 504), only inside the service's client.
 
 - Never wrap a client call in a second retry: the tries multiply.
+- In this project: Telegram Bot API calls retry through grammY's `@grammyjs/auto-retry` plugin, the client's own retry. Never add p-retry around `ctx.api` or `bot.api` calls.
 
 ## HTTP mocks in tests
 
@@ -82,8 +83,6 @@ The rules and sections above are for the JavaScript and TypeScript code. For the
 
 **Library:** Tenacity for a call that can pass on its own (a timeout, 429, 502, 503, 504), only inside the service's client.
 
-- Never wrap a client call in a second retry: the tries multiply.
-
 ## HTTP mocks in tests
 
 **Platform:** `unittest.mock` on the client's function, when the request itself does not matter.
@@ -100,7 +99,7 @@ The rules and sections above are for the JavaScript and TypeScript code. For the
 
 **Platform:** `dataclasses` for data the code builds itself; they check nothing at run time.
 
-**Library:** Pydantic for data from outside the code: request bodies, files, settings from the environment. Do not check these by hand or cast them.
+**Library:** Pydantic for data from outside the code: request bodies, files, settings from the environment, another program's output. Do not check these by hand or cast them.
 
 - Validate where the data comes in; code behind it gets typed models and does not check again.
 - Validate a third-party API's response only where a wrong answer would do real harm.

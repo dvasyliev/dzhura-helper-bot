@@ -5,7 +5,7 @@ How to carry out a plan from `superpowers:writing-plans`, whatever it is for: a 
 Do not ask how to carry out the plan; choose:
 
 - **Default:** do every task yourself in this session (`superpowers:executing-plans`).
-- **Plan long enough that its later tasks would run on a compacted conversation, or a risky change that needs a review after each task:** use `superpowers:subagent-driven-development`: one subagent per task, in order, with a review after each. Skip its worktree setup and work on `main`; each implementer commits only its own files.
+- **Plan long enough that its later tasks would run on a compacted conversation, or a risky change that needs a review after each task:** use `superpowers:subagent-driven-development`: one subagent per task, in order, with a review after each. Skip its worktree setup and its finishing step: work where the feature already is (`main`, or the worktree the `feature-workflow` rule set up), and finish as that rule says. A long plan alone is no reason for a worktree; each implementer commits only its own files.
 
 ## Subagents
 
