@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.0 (2026-11-27)
+
+### Features
+
+- npm run setup, missing programs marked in the menu, setup guides (f9ecd1f)
+
 ## 0.14.0 (2026-11-27)
 
 ### Features
